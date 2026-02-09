@@ -83,27 +83,6 @@ document.addEventListener("DOMContentLoaded", () => {
     "</article>",
   ].join("");
 
-  const fallbackAccess = [
-    '<div class="access-grid" data-stagger>',
-    '  <div class="portal-card glass-card stagger-item">',
-    "    <h3>Acceso único</h3>",
-    "    <p>Usa tus credenciales de alumno o admin.</p>",
-    '    <form class="admin-form" action="/login" method="post">',
-    '      <div class="form-field">',
-    '        <label for="portal_user">Usuario</label>',
-    '        <input id="portal_user" name="username" type="text" required>',
-    "      </div>",
-    '      <div class="form-field">',
-    '        <label for="portal_pass">Contraseña</label>',
-    '        <input id="portal_pass" name="password" type="password" required>',
-    "      </div>",
-    '      <button class="btn glass primary" type="submit">Entrar</button>',
-    "    </form>",
-    "  </div>",
-    "</div>",
-    '<p class="form-note">Si ves esta versión estática, inicia el servidor con python app.py.</p>',
-  ].join("");
-
   const replaceIfToken = (selector, token, html) => {
     const el = document.querySelector(selector);
     if (!el || !el.textContent.includes(token)) {
@@ -115,14 +94,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   replaceIfToken(".video-arena", "{{VIDEOS}}", fallbackVideos);
   replaceIfToken(".news-grid", "{{EVENTS}}", fallbackEvents);
-
-  const accessContainer = document.querySelector("#acceso .container");
-  if (accessContainer && accessContainer.innerHTML.includes("{{ACCESS_CONTENT}}")) {
-    accessContainer.innerHTML = accessContainer.innerHTML.replace(
-      "{{ACCESS_CONTENT}}",
-      fallbackAccess
-    );
-  }
 
   const formCard = document.querySelector(".form-card");
   if (formCard && formCard.innerHTML.includes("{{FORM_ALERT}}")) {
@@ -143,7 +114,41 @@ document.addEventListener("DOMContentLoaded", () => {
     video.addEventListener("loadedmetadata", enforce);
   };
 
-  document.querySelectorAll("video").forEach(lockMute);
+  const setupLoopIndicator = (video) => {
+    const wrapper =
+      video.closest(".video-thumb") || video.closest(".progression-media");
+    if (!wrapper) {
+      return;
+    }
+    if (!wrapper.querySelector(".video-loop-indicator")) {
+      const indicator = document.createElement("span");
+      indicator.className = "video-loop-indicator";
+      wrapper.appendChild(indicator);
+    }
+    const safePlay = () => {
+      const playPromise = video.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(() => {});
+      }
+    };
+    video.loop = false;
+    video.removeAttribute("loop");
+    video.addEventListener("ended", () => {
+      wrapper.classList.add("is-looping");
+      window.setTimeout(() => {
+        video.currentTime = 0;
+        safePlay();
+      }, 200);
+    });
+    const clearIndicator = () => wrapper.classList.remove("is-looping");
+    video.addEventListener("playing", clearIndicator);
+    video.addEventListener("play", clearIndicator);
+  };
+
+  document.querySelectorAll("video").forEach((video) => {
+    lockMute(video);
+    setupLoopIndicator(video);
+  });
 
   const staggerGroups = document.querySelectorAll("[data-stagger]");
   staggerGroups.forEach((group) => {

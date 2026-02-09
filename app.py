@@ -198,20 +198,19 @@ DEFAULT_TRAINING_PLAN = {
 
 DEFAULT_CONTENT = {
     "hero": {
-        "eyebrow": "Entrenamiento gratuito - 4 semanas",
+        "eyebrow": "Entrenamiento gratuito · 4 semanas",
         "title": "Calistenia con aura épica",
         "subtitle": (
-            "Un plan gratuito para desbloquear dominadas, muscle ups, pino, front lever, "
-            "back lever, fondos y resistencia con una disciplina que se nota desde la primera semana."
+            "Plan gratuito de 4 semanas para dominar dominadas, muscle up y pino con disciplina real."
         ),
     },
     "stats": [
         {"value": "4", "label": "Semanas intensas"},
         {"value": "7", "label": "Habilidades clave"},
-        {"value": "0", "label": "Costo de entrada"},
+        {"value": "GRATIS!", "label": "0€ costo de entrada"},
     ],
     "bio": {
-        "eyebrow": "El creador",
+        "eyebrow": "Biografía",
         "name": "Rafa Montero de Espinosa",
         "paragraphs": [
             (
@@ -228,9 +227,9 @@ DEFAULT_CONTENT = {
                 "alcohol, cero tabaco y una vida dedicada a progresar cada día."
             ),
         ],
-        "signature": "Entrenador: Rafa Montero de Espinosa",
+        "signature": "Teniente de Navío · Entrenador",
         "image": "FOTOS/bio-creador.jpg",
-        "image_caption": "Foto principal del creador",
+        "image_caption": "",
     },
     "program": {
         "title": "Evolución del pino libre",
@@ -1482,11 +1481,13 @@ def render_login_page(error: str | None = None) -> str:
             "    <header class=\"nav\">",
             "      <div class=\"nav-inner\">",
             "        <nav class=\"nav-group nav-left\"></nav>",
-            "        <a class=\"nav-brand\" href=\"/\">",
+            "        <a class=\"nav-brand\" href=\"/\" aria-label=\"Aura Calistenia\">",
             "          <span class=\"brand-mark\" aria-hidden=\"true\"></span>",
-            "          <span class=\"brand-text\">AURA CALISTENIA</span>",
             "        </a>",
             "        <nav class=\"nav-group nav-right\">",
+            "          <a href=\"/\">Inicio</a>",
+            "        </nav>",
+            "        <nav class=\"nav-group nav-compact\" aria-label=\"Navegación\">",
             "          <a href=\"/\">Inicio</a>",
             "        </nav>",
             "      </div>",

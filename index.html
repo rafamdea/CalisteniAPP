@@ -21,14 +21,21 @@
           <a href="#bio">Bio</a>
           <a href="#programa">Programa</a>
         </nav>
-        <a class="nav-brand" href="#inicio">
+        <a class="nav-brand" href="#inicio" aria-label="Aura Calistenia">
           <span class="brand-mark" aria-hidden="true"></span>
-          <span class="brand-text">AURA CALISTENIA</span>
         </a>
         <nav class="nav-group nav-right">
           <a href="#galeria">Vídeos</a>
           <a href="#eventos">Eventos</a>
-          <a href="#acceso">Acceso</a>
+          <a href="/portal">Portal</a>
+        </nav>
+        <nav class="nav-group nav-compact" aria-label="Secciones">
+          <a href="#inicio">Inicio</a>
+          <a href="#bio">Bio</a>
+          <a href="#programa">Programa</a>
+          <a href="#galeria">Vídeos</a>
+          <a href="#eventos">Eventos</a>
+          <a href="/portal">Portal</a>
         </nav>
       </div>
     </header>
@@ -133,29 +140,18 @@
             </article>
           </div>
 
-          <div class="cta-card glass-card reveal" data-stagger>
-            <div class="cta-text stagger-item">
-              <h3>Cómo apuntarte al programa</h3>
-              <p>
-                Completa el formulario con tu usuario, skill y objetivo principal. La contraseña es
-                personal y nunca se envía por email.
-              </p>
-              <ol class="join-steps">
-                <li>Elige tu skill y define tu objetivo principal.</li>
-                <li>Cuenta tu problema o inquietud para ajustar el plan.</li>
-                <li>Recibirás respuesta con los siguientes pasos.</li>
-              </ol>
-            </div>
-            <a class="btn glass primary stagger-item" href="#registro">Apuntarme</a>
-          </div>
-
           <div id="registro" class="form-card glass-card reveal" data-stagger>
             <div class="form-header stagger-item">
-              <h3>Solicitud de acceso al programa</h3>
-              <p>
-                Tu contraseña es privada y nunca llega al entrenador. Al correo solo se envía
-                tu usuario, skill, objetivo y email.
-              </p>
+              <h3>Cómo apuntarte al programa</h3>
+              <p>Completa la solicitud con tu skill y objetivo principal. Respondo con los siguientes pasos.</p>
+            </div>
+            <ol class="join-steps">
+              <li>Elige tu skill y define tu objetivo principal.</li>
+              <li>Cuenta tu problema o inquietud para ajustar el plan.</li>
+              <li>Recibirás respuesta con los siguientes pasos.</li>
+            </ol>
+            <div class="form-actions">
+              <a class="btn glass ghost" href="#bio">Ver la web</a>
             </div>
             <!-- {{FORM_ALERT}} -->
             <form class="apply-form" action="/apply" method="post">
@@ -204,7 +200,7 @@
               </div>
               <button class="btn glass primary" type="submit">Enviar solicitud</button>
               <p class="form-note">
-                Tu contraseña se cifra y nunca se comparte. Recibirás confirmación cuando se revise tu solicitud.
+                Tu contraseña se cifra y no se comparte. Recibirás confirmación cuando se revise tu solicitud.
               </p>
             </form>
           </div>
@@ -217,8 +213,7 @@
             <p class="eyebrow stagger-item">Galería épica</p>
             <h2 class="stagger-item">Vídeos con estética cinematográfica</h2>
             <p class="lead stagger-item">
-              Cada clip es una escena de batalla: técnica, fuerza y control absoluto para
-              encender tu ambición y empujarte al siguiente nivel.
+              Clips reales de técnica, fuerza y control para encender tu ambición y empujarte al siguiente nivel.
             </p>
           </div>
 
@@ -323,40 +318,6 @@
             <!-- FALLBACK_EVENTS_END -->
             <!-- {{EVENTS}} -->
           </div>
-        </div>
-      </section>
-
-      <section id="acceso" class="section access reveal">
-        <div class="container">
-          <div class="section-header" data-stagger>
-            <p class="eyebrow stagger-item">Acceso</p>
-            <h2 class="stagger-item">Portal de alumnos y control interno</h2>
-            <p class="lead stagger-item">
-              Aquí entran los alumnos dados de alta y donde gestiono eventos, vídeos
-              y mensajes. Todo en un solo punto.
-            </p>
-          </div>
-          <!-- FALLBACK_ACCESS_CONTENT_START -->
-          <div class="access-grid" data-stagger>
-            <div class="portal-card glass-card stagger-item">
-              <h3>Acceso único</h3>
-              <p>Usa tus credenciales de alumno o admin.</p>
-              <form class="admin-form" action="/login" method="post">
-                <div class="form-field">
-                  <label for="portal_user">Usuario</label>
-                  <input id="portal_user" name="username" type="text" required>
-                </div>
-                <div class="form-field">
-                  <label for="portal_pass">Contraseña</label>
-                  <input id="portal_pass" name="password" type="password" required>
-                </div>
-                <button class="btn glass primary" type="submit">Entrar</button>
-              </form>
-              <p class="form-note">Si ves esta versión estática, inicia el servidor con python app.py.</p>
-            </div>
-          </div>
-          <!-- FALLBACK_ACCESS_CONTENT_END -->
-          <!-- {{ACCESS_CONTENT}} -->
         </div>
       </section>
 
