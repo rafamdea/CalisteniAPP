@@ -150,6 +150,235 @@ document.addEventListener("DOMContentLoaded", () => {
     setupLoopIndicator(video);
   });
 
+  const planEditor = document.querySelector(".plan-editor");
+  if (planEditor) {
+    const planDataEl = document.getElementById("plan-data");
+    let planData = {};
+    if (planDataEl) {
+      try {
+        planData = JSON.parse(planDataEl.textContent || "{}");
+      } catch (error) {
+        planData = {};
+      }
+    }
+
+    const buildRow = (week, day, rowIndex, values = {}) => {
+      const row = document.createElement("div");
+      row.className = "plan-item-row";
+      row.dataset.row = rowIndex;
+      row.innerHTML = `
+        <input data-field="exercise" name="week${week}_day${day}_item${rowIndex}_exercise" list="exercise-options" placeholder="Ejercicio">
+        <input data-field="sets" name="week${week}_day${day}_item${rowIndex}_sets" placeholder="Series">
+        <input data-field="reps" name="week${week}_day${day}_item${rowIndex}_reps" placeholder="Reps">
+        <input data-field="weight" name="week${week}_day${day}_item${rowIndex}_weight" placeholder="Peso">
+        <input data-field="rest" name="week${week}_day${day}_item${rowIndex}_rest" placeholder="Descanso">
+        <input data-field="notes" name="week${week}_day${day}_item${rowIndex}_notes" placeholder="Observaciones">
+        <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio">×</button>
+      `;
+      row.querySelector('[data-field="exercise"]').value = values.exercise || "";
+      row.querySelector('[data-field="sets"]').value = values.sets || "";
+      row.querySelector('[data-field="reps"]').value = values.reps || "";
+      row.querySelector('[data-field="weight"]').value = values.weight || "";
+      row.querySelector('[data-field="rest"]').value = values.rest || "";
+      row.querySelector('[data-field="notes"]').value = values.notes || "";
+      return row;
+    };
+
+    const updateRestState = (dayCard) => {
+      const restToggle = dayCard.querySelector('[data-field="day-rest"]');
+      const isRest = restToggle ? restToggle.checked : false;
+      dayCard.classList.toggle("is-rest", isRest);
+      dayCard.querySelectorAll(".plan-items input").forEach((input) => {
+        input.disabled = isRest;
+      });
+      dayCard.querySelectorAll(".plan-item-remove").forEach((btn) => {
+        btn.disabled = isRest;
+      });
+      const addButton = dayCard.querySelector(".plan-item-add");
+      if (addButton) {
+        addButton.disabled = isRest;
+      }
+    };
+
+    const extractDayData = (dayCard) => {
+      const titleInput = dayCard.querySelector('[data-field="day-title"]');
+      const restToggle = dayCard.querySelector('[data-field="day-rest"]');
+      const items = Array.from(dayCard.querySelectorAll(".plan-item-row")).map((row) => {
+        const value = (field) =>
+          (row.querySelector(`[data-field="${field}"]`) || {}).value || "";
+        return {
+          exercise: value("exercise").trim(),
+          sets: value("sets").trim(),
+          reps: value("reps").trim(),
+          weight: value("weight").trim(),
+          rest: value("rest").trim(),
+          notes: value("notes").trim(),
+        };
+      });
+      return {
+        title: titleInput ? titleInput.value.trim() : "",
+        rest: restToggle ? restToggle.checked : false,
+        items: items.filter(
+          (item) =>
+            item.exercise || item.sets || item.reps || item.weight || item.rest || item.notes
+        ),
+      };
+    };
+
+    const applyDayData = (dayCard, data) => {
+      const week = Number(dayCard.dataset.week || 0);
+      const day = Number(dayCard.dataset.day || 0);
+      const titleInput = dayCard.querySelector('[data-field="day-title"]');
+      const restToggle = dayCard.querySelector('[data-field="day-rest"]');
+      const itemsContainer = dayCard.querySelector(".plan-items");
+      if (titleInput) {
+        titleInput.value = data.title || "";
+      }
+      if (restToggle) {
+        restToggle.checked = Boolean(data.rest);
+      }
+      if (itemsContainer) {
+        itemsContainer.innerHTML = "";
+        const items = Array.isArray(data.items) ? data.items : [];
+        const rowsNeeded = Math.max(items.length + 1, 3);
+        for (let i = 0; i < rowsNeeded; i += 1) {
+          itemsContainer.appendChild(buildRow(week, day, i + 1, items[i] || {}));
+        }
+      }
+      updateRestState(dayCard);
+    };
+
+    const extractWeekData = (weekBlock) => {
+      const titleInput = weekBlock.querySelector(".plan-week-title-field input");
+      const days = Array.from(weekBlock.querySelectorAll(".plan-day-card")).map((day) =>
+        extractDayData(day)
+      );
+      return {
+        title: titleInput ? titleInput.value.trim() : "",
+        days,
+      };
+    };
+
+    const applyWeekData = (weekBlock, data) => {
+      const titleInput = weekBlock.querySelector(".plan-week-title-field input");
+      if (titleInput) {
+        titleInput.value = data.title || "";
+      }
+      const dayCards = Array.from(weekBlock.querySelectorAll(".plan-day-card"));
+      dayCards.forEach((dayCard, idx) => {
+        applyDayData(dayCard, (data.days && data.days[idx]) || {});
+      });
+    };
+
+    planEditor.querySelectorAll(".plan-day-card").forEach(updateRestState);
+
+    planEditor.addEventListener("change", (event) => {
+      if (event.target.matches('[data-field="day-rest"]')) {
+        const dayCard = event.target.closest(".plan-day-card");
+        if (dayCard) {
+          updateRestState(dayCard);
+        }
+      }
+    });
+
+    planEditor.addEventListener("click", (event) => {
+      const addButton = event.target.closest(".plan-item-add");
+      if (addButton) {
+        const dayCard = addButton.closest(".plan-day-card");
+        if (!dayCard) return;
+        const week = Number(dayCard.dataset.week || 0);
+        const day = Number(dayCard.dataset.day || 0);
+        const itemsContainer = dayCard.querySelector(".plan-items");
+        if (!itemsContainer) return;
+        const rows = itemsContainer.querySelectorAll(".plan-item-row");
+        const lastIndex = rows.length
+          ? Number(rows[rows.length - 1].dataset.row || rows.length)
+          : 0;
+        itemsContainer.appendChild(buildRow(week, day, lastIndex + 1, {}));
+        return;
+      }
+
+      const removeButton = event.target.closest(".plan-item-remove");
+      if (removeButton) {
+        const row = removeButton.closest(".plan-item-row");
+        const container = removeButton.closest(".plan-items");
+        if (row && container) {
+          if (container.querySelectorAll(".plan-item-row").length > 1) {
+            row.remove();
+          }
+        }
+        return;
+      }
+
+      const moveDayButton = event.target.closest(".plan-day-move");
+      if (moveDayButton) {
+        const dayCard = moveDayButton.closest(".plan-day-card");
+        if (!dayCard) return;
+        const weekBlock = dayCard.closest(".plan-week-block");
+        if (!weekBlock) return;
+        const direction = moveDayButton.dataset.action;
+        const currentIndex = Number(dayCard.dataset.day || 0);
+        const targetIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+        const targetCard = weekBlock.querySelector(
+          `.plan-day-card[data-day="${targetIndex}"]`
+        );
+        if (!targetCard) return;
+        const currentData = extractDayData(dayCard);
+        const targetData = extractDayData(targetCard);
+        applyDayData(dayCard, targetData);
+        applyDayData(targetCard, currentData);
+        return;
+      }
+
+      const moveWeekButton = event.target.closest(".plan-week-move");
+      if (moveWeekButton) {
+        const weekBlock = moveWeekButton.closest(".plan-week-block");
+        if (!weekBlock) return;
+        const direction = moveWeekButton.dataset.action;
+        const currentIndex = Number(weekBlock.dataset.week || 0);
+        const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+        const targetBlock = planEditor.querySelector(
+          `.plan-week-block[data-week="${targetIndex}"]`
+        );
+        if (!targetBlock) return;
+        const currentData = extractWeekData(weekBlock);
+        const targetData = extractWeekData(targetBlock);
+        applyWeekData(weekBlock, targetData);
+        applyWeekData(targetBlock, currentData);
+        return;
+      }
+    });
+
+    const copyButton = document.getElementById("copy_week_btn");
+    if (copyButton) {
+      copyButton.addEventListener("click", () => {
+        const userSelect = document.getElementById("copy_plan_user");
+        const weekSelect = document.getElementById("copy_plan_week");
+        const targetSelect = document.getElementById("copy_target_week");
+        const sourceUser = userSelect ? userSelect.value : "";
+        const sourceWeek = Number(weekSelect ? weekSelect.value : 0);
+        const targetWeek = Number(targetSelect ? targetSelect.value : 0);
+        if (!sourceUser || !sourceWeek || !targetWeek) {
+          return;
+        }
+        const sourcePlan = planData[sourceUser];
+        if (!sourcePlan || !Array.isArray(sourcePlan.weeks)) {
+          return;
+        }
+        const weekData = sourcePlan.weeks[sourceWeek - 1];
+        if (!weekData) {
+          return;
+        }
+        const targetBlock = planEditor.querySelector(
+          `.plan-week-block[data-week="${targetWeek}"]`
+        );
+        if (targetBlock) {
+          applyWeekData(targetBlock, weekData);
+        }
+      });
+    }
+  }
+
   const staggerGroups = document.querySelectorAll("[data-stagger]");
   staggerGroups.forEach((group) => {
     const items = group.querySelectorAll(".stagger-item");

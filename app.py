@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import os
+import re
 import secrets
 import shutil
 import smtplib
@@ -420,12 +421,15 @@ def load_content() -> dict:
 
 def normalize_plan_item(item) -> dict:
     if isinstance(item, dict):
+        rest_value = str(item.get("rest", "")).strip()
+        if not rest_value:
+            rest_value = str(item.get("accessories", "")).strip()
         return {
             "exercise": str(item.get("exercise", "")).strip(),
             "sets": str(item.get("sets", "")).strip(),
             "reps": str(item.get("reps", "")).strip(),
             "weight": str(item.get("weight", "")).strip(),
-            "accessories": str(item.get("accessories", "")).strip(),
+            "rest": rest_value,
             "notes": str(item.get("notes", "")).strip(),
         }
     text = str(item).strip()
@@ -436,14 +440,24 @@ def normalize_plan_item(item) -> dict:
         "sets": "",
         "reps": "",
         "weight": "",
-        "accessories": "",
+        "rest": "",
         "notes": "",
     }
 
 
 def normalize_plan_day(day) -> dict:
     items_source = []
+    title = ""
+    rest_flag = False
+    status = ""
+    status_note = ""
+    feedback = ""
     if isinstance(day, dict):
+        title = str(day.get("title", "")).strip()
+        rest_flag = bool(day.get("rest", False))
+        status = str(day.get("status", "")).strip()
+        status_note = str(day.get("status_note", "")).strip()
+        feedback = str(day.get("feedback", "")).strip()
         items = day.get("items")
         if isinstance(items, list):
             items_source = items
@@ -458,7 +472,14 @@ def normalize_plan_day(day) -> dict:
         normalized = normalize_plan_item(item)
         if normalized and normalized.get("exercise"):
             normalized_items.append(normalized)
-    return {"items": normalized_items}
+    return {
+        "title": title,
+        "rest": rest_flag,
+        "items": normalized_items,
+        "status": status,
+        "status_note": status_note,
+        "feedback": feedback,
+    }
 
 
 def normalize_plan(plan: dict | None) -> dict:
@@ -481,6 +502,7 @@ def normalize_plan(plan: dict | None) -> dict:
             default_weeks[index] if index < len(default_weeks) and isinstance(default_weeks[index], dict) else {}
         )
         title = source_week.get("title") or default_week.get("title", f"Semana {index + 1}")
+        summary = str(source_week.get("summary", "")).strip()
         days = source_week.get("days")
         if not isinstance(days, list):
             days = []
@@ -493,7 +515,7 @@ def normalize_plan(plan: dict | None) -> dict:
             if day_source is None and day_index < len(default_days):
                 day_source = default_days[day_index]
             normalized_days.append(normalize_plan_day(day_source))
-        normalized["weeks"].append({"title": title, "days": normalized_days})
+        normalized["weeks"].append({"title": title, "summary": summary, "days": normalized_days})
     return normalized
 
 
@@ -758,7 +780,7 @@ def plan_day_to_text(day: dict) -> str:
             str(item.get("sets", "")).strip(),
             str(item.get("reps", "")).strip(),
             str(item.get("weight", "")).strip(),
-            str(item.get("accessories", "")).strip(),
+            str(item.get("rest", "")).strip(),
             str(item.get("notes", "")).strip(),
         ]
         while parts and not parts[-1]:
@@ -787,17 +809,25 @@ def render_training_plan(plan: dict) -> str:
     ]
     for week_index, week in enumerate(normalized.get("weeks", []), start=1):
         week_title = html.escape(week.get("title", f"Semana {week_index}"))
-        parts.append('    <div class="training-week stagger-item">')
+        week_summary = html.escape(week.get("summary", ""))
+        parts.append(f'    <div class="training-week stagger-item" id="week{week_index}">')
         parts.append(f'      <div class="training-week-title">{week_title}</div>')
         parts.append('      <div class="day-grid">')
         days = week.get("days") or []
         for day_index, day_text in enumerate(days, start=1):
+            day_title = html.escape(day_text.get("title", "")) if isinstance(day_text, dict) else ""
+            rest_flag = bool(day_text.get("rest")) if isinstance(day_text, dict) else False
+            status = str(day_text.get("status", "")).strip() if isinstance(day_text, dict) else ""
+            status_note = html.escape(day_text.get("status_note", "")) if isinstance(day_text, dict) else ""
+            feedback = html.escape(day_text.get("feedback", "")) if isinstance(day_text, dict) else ""
             parts.append('        <div class="day-card">')
-            parts.append(f'          <span class="day-label">Dia {day_index}</span>')
+            parts.append(f'          <span class="day-label">Día {day_index}</span>')
+            if day_title:
+                parts.append(f'          <strong class="day-title">{day_title}</strong>')
             items = day_text.get("items") if isinstance(day_text, dict) else []
-            if not isinstance(items, list) or not items:
+            if rest_flag or not isinstance(items, list) or not items:
                 parts.append('          <p class="plan-empty">Descanso o movilidad.</p>')
-            else:
+            if not rest_flag and isinstance(items, list) and items:
                 parts.append('          <div class="plan-items">')
                 for item in items:
                     if not isinstance(item, dict):
@@ -806,7 +836,7 @@ def render_training_plan(plan: dict) -> str:
                     sets = html.escape(item.get("sets", ""))
                     reps = html.escape(item.get("reps", ""))
                     weight = html.escape(item.get("weight", ""))
-                    accessories = html.escape(item.get("accessories", ""))
+                    rest = html.escape(item.get("rest", ""))
                     notes = html.escape(item.get("notes", ""))
                     meta_parts = []
                     if sets:
@@ -815,8 +845,8 @@ def render_training_plan(plan: dict) -> str:
                         meta_parts.append(f"<span>Reps: {reps}</span>")
                     if weight:
                         meta_parts.append(f"<span>Peso: {weight}</span>")
-                    if accessories:
-                        meta_parts.append(f"<span>Accesorios: {accessories}</span>")
+                    if rest:
+                        meta_parts.append(f"<span>Descanso: {rest}</span>")
                     if notes:
                         meta_parts.append(f"<span>Notas: {notes}</span>")
                     meta_html = "".join(meta_parts) if meta_parts else "<span>Trabajo técnico.</span>"
@@ -825,8 +855,43 @@ def render_training_plan(plan: dict) -> str:
                     parts.append(f'              <div class="plan-meta">{meta_html}</div>')
                     parts.append("            </div>")
                 parts.append("          </div>")
+            status_done = " is-active" if status == "done" else ""
+            status_partial = " is-active" if status == "partial" else ""
+            status_missed = " is-active" if status == "missed" else ""
+            parts.append('          <form class="day-status" action="/portal/day/update" method="post">')
+            parts.append(f'            <input type="hidden" name="week" value="{week_index}">')
+            parts.append(f'            <input type="hidden" name="day" value="{day_index}">')
+            parts.append('            <div class="status-buttons">')
+            parts.append(
+                f'              <button class="status-button done{status_done}" type="submit" name="status" value="done">Hecho</button>'
+            )
+            parts.append(
+                f'              <button class="status-button partial{status_partial}" type="submit" name="status" value="partial">Hecho con descanso</button>'
+            )
+            parts.append(
+                f'              <button class="status-button missed{status_missed}" type="submit" name="status" value="missed">No completado</button>'
+            )
+            parts.append("            </div>")
+            parts.append(
+                f'            <input class="status-note" name="status_note" type="text" placeholder="Observaciones (si fue parcial)" value="{status_note}">'
+            )
+            parts.append(
+                f'            <textarea class="day-feedback" name="feedback" rows="3" placeholder="Feedback del día">{feedback}</textarea>'
+            )
+            parts.append(
+                '            <button class="btn glass ghost small" type="submit" name="save" value="1">Guardar nota</button>'
+            )
+            parts.append("          </form>")
             parts.append('        </div>')
         parts.append("      </div>")
+        parts.append('      <form class="week-summary" action="/portal/week/update" method="post">')
+        parts.append(f'        <input type="hidden" name="week" value="{week_index}">')
+        parts.append('        <label>Resumen semanal</label>')
+        parts.append(
+            f'        <textarea name="summary" rows="3" placeholder="Resumen de la semana">{week_summary}</textarea>'
+        )
+        parts.append('        <button class="btn glass ghost small" type="submit">Guardar resumen</button>')
+        parts.append("      </form>")
         parts.append("    </div>")
     parts.append("  </div>")
     parts.append("</div>")
@@ -1231,20 +1296,92 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
     selector_html = (
         f'<div class="user-selector"><span>Selecciona alumno:</span>{"".join(selector_items)}</div>'
     )
+    plan_data = {}
+    for app in applications:
+        username = app.get("username", "")
+        if not username:
+            continue
+        cleaned_plan = normalize_plan(app.get("plan"))
+        for week in cleaned_plan.get("weeks", []):
+            week["summary"] = ""
+            for day in week.get("days", []):
+                day["status"] = ""
+                day["status_note"] = ""
+                day["feedback"] = ""
+        plan_data[username] = cleaned_plan
+    plan_json = json.dumps(plan_data, ensure_ascii=True).replace("</", "<\\/")
+
+    exercise_options = [
+        "Dominadas",
+        "Muscle up",
+        "Pino",
+        "Flexiones",
+        "Fondos",
+        "Front lever",
+        "Back lever",
+        "Plancha",
+        "Core",
+        "Movilidad",
+        "Running",
+    ]
+    datalist_html = "\n".join([f"<option value=\"{html.escape(opt)}\"></option>" for opt in exercise_options])
+
+    def render_item_row(week_index: int, day_index: int, row_index: int, item: dict) -> str:
+        exercise = html.escape(item.get("exercise", "")) if item else ""
+        sets = html.escape(item.get("sets", "")) if item else ""
+        reps = html.escape(item.get("reps", "")) if item else ""
+        weight = html.escape(item.get("weight", "")) if item else ""
+        rest = html.escape(item.get("rest", "")) if item else ""
+        notes = html.escape(item.get("notes", "")) if item else ""
+        return "\n".join(
+            [
+                f'<div class="plan-item-row" data-row="{row_index}">',
+                f'  <input data-field="exercise" name="week{week_index}_day{day_index}_item{row_index}_exercise" list="exercise-options" placeholder="Ejercicio" value="{exercise}">',
+                f'  <input data-field="sets" name="week{week_index}_day{day_index}_item{row_index}_sets" placeholder="Series" value="{sets}">',
+                f'  <input data-field="reps" name="week{week_index}_day{day_index}_item{row_index}_reps" placeholder="Reps" value="{reps}">',
+                f'  <input data-field="weight" name="week{week_index}_day{day_index}_item{row_index}_weight" placeholder="Peso" value="{weight}">',
+                f'  <input data-field="rest" name="week{week_index}_day{day_index}_item{row_index}_rest" placeholder="Descanso" value="{rest}">',
+                f'  <input data-field="notes" name="week{week_index}_day{day_index}_item{row_index}_notes" placeholder="Observaciones" value="{notes}">',
+                '  <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio">×</button>',
+                "</div>",
+            ]
+        )
 
     week_blocks = []
     for week_index, week in enumerate(plan.get("weeks", []), start=1):
         week_title = html.escape(week.get("title", f"Semana {week_index}"))
-        day_texts = plan_week_to_texts(week)
-        day_fields = []
-        for day_index, day_text in enumerate(day_texts, start=1):
-            textarea_id = f"week{week_index}_day{day_index}"
-            day_fields.append(
+        day_cards = []
+        for day_index, day in enumerate(week.get("days", []), start=1):
+            day_title = html.escape(day.get("title", ""))
+            rest_flag = "checked" if day.get("rest") else ""
+            card_class = "plan-day-card is-rest" if day.get("rest") else "plan-day-card"
+            items = day.get("items") if isinstance(day.get("items"), list) else []
+            min_rows = 3
+            row_count = max(len(items) + 1, min_rows)
+            rows = []
+            for row_index in range(1, row_count + 1):
+                item = items[row_index - 1] if row_index - 1 < len(items) else {}
+                rows.append(render_item_row(week_index, day_index, row_index, item))
+            day_cards.append(
                 "\n".join(
                     [
-                        '<div class="plan-day">',
-                        f"  <label for=\"{textarea_id}\">Día {day_index}</label>",
-                        f"  <textarea id=\"{textarea_id}\" name=\"{textarea_id}\" rows=\"5\">{html.escape(day_text)}</textarea>",
+                        f'<div class="{card_class}" data-week="{week_index}" data-day="{day_index}">',
+                        '  <div class="plan-day-head">',
+                        f'    <span class="plan-day-label">Día {day_index}</span>',
+                        f'    <input class="plan-day-title" data-field="day-title" name="week{week_index}_day{day_index}_title" placeholder="Título del día" value="{day_title}">',
+                        '    <label class="plan-rest-toggle">',
+                        f'      <input data-field="day-rest" type="checkbox" name="week{week_index}_day{day_index}_rest" {rest_flag}> Descanso',
+                        "    </label>",
+                        '    <div class="plan-day-actions">',
+                        '      <button type="button" class="plan-day-move" data-action="left" aria-label="Mover día a la izquierda">←</button>',
+                        '      <button type="button" class="plan-day-move" data-action="right" aria-label="Mover día a la derecha">→</button>',
+                        "    </div>",
+                        "  </div>",
+                        '  <div class="plan-items">',
+                        "\n".join(rows),
+                        "  </div>",
+                        '  <p class="plan-rest-note">Descanso / movilidad</p>',
+                        '  <button class="btn glass ghost small plan-item-add" type="button">Añadir ejercicio</button>',
                         "</div>",
                     ]
                 )
@@ -1252,15 +1389,17 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
         week_blocks.append(
             "\n".join(
                 [
-                    '<div class="plan-week-block">',
-                    '  <div class="form-row">',
-                    "    <div class=\"form-field\">",
-                    f"      <label for=\"week{week_index}_title\">Semana {week_index} - título</label>",
-                    f"      <input id=\"week{week_index}_title\" name=\"week{week_index}_title\" type=\"text\" value=\"{week_title}\">",
+                    f'<div class="plan-week-block" data-week="{week_index}">',
+                    '  <div class="plan-week-head">',
+                    f'    <div class="plan-week-title-field"><label for="week{week_index}_title">Semana {week_index} - título</label>',
+                    f'    <input id="week{week_index}_title" name="week{week_index}_title" type="text" value="{week_title}"></div>',
+                    '    <div class="plan-week-actions">',
+                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="up">Subir semana</button>',
+                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="down">Bajar semana</button>',
                     "    </div>",
                     "  </div>",
-                    '  <div class="plan-days-grid">',
-                    "\n".join(day_fields),
+                    '  <div class="plan-days-row">',
+                    "\n".join(day_cards),
                     "  </div>",
                     "</div>",
                 ]
@@ -1269,10 +1408,34 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
 
     return "\n".join(
         [
-            '<div id="plan" class="admin-card glass-card admin-wide">',
+            '<div id="plan" class="admin-card glass-card admin-wide plan-editor">',
             "  <h3>Plan de entrenamiento por alumno</h3>",
             selector_html,
-            '  <p class="admin-note">Formato por línea: Ejercicio | Series | Reps | Peso | Accesorios | Comentario.</p>',
+            "  <div class=\"plan-tools\">",
+            "    <div class=\"plan-tool-row\">",
+            "      <label>Copiar semana de:</label>",
+            "      <select id=\"copy_plan_user\">"
+            + "".join(
+                [
+                    (
+                        f'<option value="{html.escape(app.get("username",""))}"'
+                        f'{" selected" if app.get("username","") == selected_user else ""}>'
+                        f'{html.escape(app.get("username",""))}</option>'
+                    )
+                    for app in applications
+                ]
+            )
+            + "</select>",
+            "      <select id=\"copy_plan_week\">"
+            + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
+            + "</select>",
+            "      <span>→</span>",
+            "      <select id=\"copy_target_week\">"
+            + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
+            + "</select>",
+            '      <button type="button" class="btn glass ghost small" id="copy_week_btn">Copiar</button>',
+            "    </div>",
+            "  </div>",
             "  <form class=\"admin-form\" action=\"/admin/plan/update\" method=\"post\">",
             f"    <input type=\"hidden\" name=\"username\" value=\"{html.escape(selected_user)}\">",
             '    <div class="form-field">',
@@ -1282,6 +1445,8 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             "\n".join(week_blocks),
             "    <button class=\"btn glass primary\" type=\"submit\">Guardar plan</button>",
             "  </form>",
+            f'  <datalist id="exercise-options">{datalist_html}</datalist>',
+            f'  <script type="application/json" id="plan-data">{plan_json}</script>',
             "</div>",
         ]
     )
@@ -1628,7 +1793,7 @@ def parse_day_items(text: str) -> list[dict]:
         parts = [part.strip() for part in line.split("|")]
         while len(parts) < 6:
             parts.append("")
-        exercise, sets, reps, weight, accessories, notes = parts[:6]
+        exercise, sets, reps, weight, rest, notes = parts[:6]
         if not exercise:
             continue
         items.append(
@@ -1637,8 +1802,39 @@ def parse_day_items(text: str) -> list[dict]:
                 "sets": sets,
                 "reps": reps,
                 "weight": weight,
-                "accessories": accessories,
+                "rest": rest,
                 "notes": notes,
+            }
+        )
+    return items
+
+
+def parse_plan_items_from_form(data: dict[str, str], week_index: int, day_index: int) -> list[dict]:
+    pattern = re.compile(
+        rf"week{week_index}_day{day_index}_item(\d+)_(exercise|sets|reps|weight|rest|notes)$"
+    )
+    items_by_index: dict[int, dict[str, str]] = {}
+    for key, value in data.items():
+        match = pattern.match(key)
+        if not match:
+            continue
+        idx = int(match.group(1))
+        field = match.group(2)
+        items_by_index.setdefault(idx, {})[field] = str(value).strip()
+    items = []
+    for idx in sorted(items_by_index):
+        item = items_by_index[idx]
+        exercise = item.get("exercise", "").strip()
+        if not exercise:
+            continue
+        items.append(
+            {
+                "exercise": exercise,
+                "sets": item.get("sets", "").strip(),
+                "reps": item.get("reps", "").strip(),
+                "weight": item.get("weight", "").strip(),
+                "rest": item.get("rest", "").strip(),
+                "notes": item.get("notes", "").strip(),
             }
         )
     return items
@@ -1807,6 +2003,14 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path == "/user/submissions/add":
             self.handle_submission_add()
+            return
+
+        if path == "/portal/day/update":
+            self.handle_day_update()
+            return
+
+        if path == "/portal/week/update":
+            self.handle_week_update()
             return
 
         admin_user = get_session_user(self.headers.get("Cookie"), ADMIN_SESSION_COOKIE, "admin")
@@ -2227,13 +2431,82 @@ class AuraHandler(SimpleHTTPRequestHandler):
             if week_title:
                 plan["weeks"][week_index]["title"] = week_title
             for day_index in range(7):
-                raw = data.get(f"week{week_index + 1}_day{day_index + 1}", "")
-                items = parse_day_items(raw)
-                plan["weeks"][week_index]["days"][day_index] = {"items": items}
+                day_key = f"week{week_index + 1}_day{day_index + 1}"
+                day_title = data.get(f"{day_key}_title", "").strip()
+                rest_flag = f"{day_key}_rest" in data
+                items = parse_plan_items_from_form(data, week_index + 1, day_index + 1)
+                day = plan["weeks"][week_index]["days"][day_index]
+                day["title"] = day_title
+                day["rest"] = rest_flag
+                day["items"] = [] if rest_flag else items
         app["plan"] = plan
         save_json(APPLICATIONS_PATH, applications)
         plan_param = urllib.parse.quote(username)
         self.redirect(f"/admin?status=plan_saved&plan_user={plan_param}#plan")
+
+    def handle_day_update(self) -> None:
+        cookie_header = self.headers.get("Cookie")
+        portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
+        if not portal_user:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        data, _ = parse_post_data(self)
+        try:
+            week_index = int(data.get("week", "0")) - 1
+            day_index = int(data.get("day", "0")) - 1
+        except ValueError:
+            self.redirect("/portal")
+            return
+        if week_index not in range(4) or day_index not in range(7):
+            self.redirect("/portal")
+            return
+        status = data.get("status", "").strip()
+        status_note = data.get("status_note", "").strip()
+        feedback = data.get("feedback", "").strip()
+
+        applications = load_applications()
+        app = find_application(applications, portal_user)
+        if not app:
+            self.redirect("/portal")
+            return
+        plan = normalize_plan(app.get("plan"))
+        day = plan["weeks"][week_index]["days"][day_index]
+        if status in {"done", "partial", "missed"}:
+            day["status"] = status
+        if "status_note" in data:
+            day["status_note"] = status_note
+        if "feedback" in data:
+            day["feedback"] = feedback
+        app["plan"] = plan
+        save_json(APPLICATIONS_PATH, applications)
+        self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
+
+    def handle_week_update(self) -> None:
+        cookie_header = self.headers.get("Cookie")
+        portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
+        if not portal_user:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        data, _ = parse_post_data(self)
+        try:
+            week_index = int(data.get("week", "0")) - 1
+        except ValueError:
+            self.redirect("/portal")
+            return
+        if week_index not in range(4):
+            self.redirect("/portal")
+            return
+        summary = data.get("summary", "").strip()
+        applications = load_applications()
+        app = find_application(applications, portal_user)
+        if not app:
+            self.redirect("/portal")
+            return
+        plan = normalize_plan(app.get("plan"))
+        plan["weeks"][week_index]["summary"] = summary
+        app["plan"] = plan
+        save_json(APPLICATIONS_PATH, applications)
+        self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
 
     def handle_submission_add(self) -> None:
         cookie_header = self.headers.get("Cookie")
