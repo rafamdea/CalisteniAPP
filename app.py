@@ -1342,7 +1342,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                 f'  <input data-field="weight" name="week{week_index}_day{day_index}_item{row_index}_weight" placeholder="Peso" value="{weight}">',
                 f'  <input data-field="rest" name="week{week_index}_day{day_index}_item{row_index}_rest" placeholder="Descanso" value="{rest}">',
                 f'  <input data-field="notes" name="week{week_index}_day{day_index}_item{row_index}_notes" placeholder="Observaciones" value="{notes}">',
-                '  <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio">×</button>',
+                '  <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio" title="Quitar ejercicio">×</button>',
                 "</div>",
             ]
         )
@@ -1373,8 +1373,8 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                         f'      <input data-field="day-rest" type="checkbox" name="week{week_index}_day{day_index}_rest" {rest_flag}> Descanso',
                         "    </label>",
                         '    <div class="plan-day-actions">',
-                        '      <button type="button" class="plan-day-move" data-action="left" aria-label="Mover día a la izquierda">←</button>',
-                        '      <button type="button" class="plan-day-move" data-action="right" aria-label="Mover día a la derecha">→</button>',
+                        '      <button type="button" class="plan-day-move" data-action="left" aria-label="Mover día a la izquierda" title="Mover día a la izquierda">←</button>',
+                        '      <button type="button" class="plan-day-move" data-action="right" aria-label="Mover día a la derecha" title="Mover día a la derecha">→</button>',
                         "    </div>",
                         "  </div>",
                         '  <div class="plan-items">',
@@ -1394,8 +1394,8 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                     f'    <div class="plan-week-title-field"><label for="week{week_index}_title">Semana {week_index} - título</label>',
                     f'    <input id="week{week_index}_title" name="week{week_index}_title" type="text" value="{week_title}"></div>',
                     '    <div class="plan-week-actions">',
-                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="up">Subir semana</button>',
-                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="down">Bajar semana</button>',
+                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="up" title="Subir semana">Subir semana</button>',
+                    '      <button type="button" class="btn glass ghost small plan-week-move" data-action="down" title="Bajar semana">Bajar semana</button>',
                     "    </div>",
                     "  </div>",
                     '  <div class="plan-days-row">',
@@ -1413,8 +1413,9 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             selector_html,
             "  <div class=\"plan-tools\">",
             "    <div class=\"plan-tool-row\">",
-            "      <label>Copiar semana de:</label>",
-            "      <select id=\"copy_plan_user\">"
+            f"      <span class=\"plan-current-user\">Alumno actual: <strong>{html.escape(selected_user)}</strong></span>",
+            "      <label for=\"plan_user_select\">Cambiar alumno:</label>",
+            "      <select id=\"plan_user_select\">"
             + "".join(
                 [
                     (
@@ -1426,14 +1427,66 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                 ]
             )
             + "</select>",
+            '      <button type="button" class="btn glass ghost small" id="load_user_btn">Cargar</button>',
+            "      <span class=\"plan-tool-note\">Guarda antes de cambiar para no perder cambios.</span>",
+            "    </div>",
+            "    <div class=\"plan-tool-row\">",
+            "      <label>Copiar semana:</label>",
+            "      <select id=\"copy_plan_user\">"
+            + "".join([f'<option value="{html.escape(app.get("username",""))}">{html.escape(app.get("username",""))}</option>' for app in applications])
+            + "</select>",
             "      <select id=\"copy_plan_week\">"
             + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
             + "</select>",
             "      <span>→</span>",
+            "      <select id=\"copy_target_user\">"
+            + "".join(
+                [
+                    (
+                        f'<option value="{html.escape(app.get("username",""))}"'
+                        f'{" selected" if app.get("username","") == selected_user else ""}>'
+                        f'{html.escape(app.get("username",""))}</option>'
+                    )
+                    for app in applications
+                ]
+            )
+            + "</select>",
             "      <select id=\"copy_target_week\">"
             + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
             + "</select>",
             '      <button type="button" class="btn glass ghost small" id="copy_week_btn">Copiar</button>',
+            "    </div>",
+            "    <div class=\"plan-tool-row\">",
+            "      <label>Copiar día:</label>",
+            "      <select id=\"copy_day_user\">"
+            + "".join([f'<option value="{html.escape(app.get("username",""))}">{html.escape(app.get("username",""))}</option>' for app in applications])
+            + "</select>",
+            "      <select id=\"copy_day_week\">"
+            + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
+            + "</select>",
+            "      <select id=\"copy_day_day\">"
+            + "".join([f'<option value="{i}">Día {i}</option>' for i in range(1, 8)])
+            + "</select>",
+            "      <span>→</span>",
+            "      <select id=\"copy_day_target_user\">"
+            + "".join(
+                [
+                    (
+                        f'<option value="{html.escape(app.get("username",""))}"'
+                        f'{" selected" if app.get("username","") == selected_user else ""}>'
+                        f'{html.escape(app.get("username",""))}</option>'
+                    )
+                    for app in applications
+                ]
+            )
+            + "</select>",
+            "      <select id=\"copy_day_target_week\">"
+            + "".join([f'<option value="{i}">Semana {i}</option>' for i in range(1, 5)])
+            + "</select>",
+            "      <select id=\"copy_day_target_day\">"
+            + "".join([f'<option value="{i}">Día {i}</option>' for i in range(1, 8)])
+            + "</select>",
+            '      <button type="button" class="btn glass ghost small" id="copy_day_btn">Copiar</button>',
             "    </div>",
             "  </div>",
             "  <form class=\"admin-form\" action=\"/admin/plan/update\" method=\"post\">",
@@ -1442,7 +1495,9 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             "      <label for=\"plan_title\">Título del plan</label>",
             f"      <input id=\"plan_title\" name=\"plan_title\" type=\"text\" value=\"{html.escape(plan.get('title', 'Plan de entrenamiento'))}\">",
             "    </div>",
+            '    <div class="plan-weeks-row">',
             "\n".join(week_blocks),
+            "    </div>",
             "    <button class=\"btn glass primary\" type=\"submit\">Guardar plan</button>",
             "  </form>",
             f'  <datalist id="exercise-options">{datalist_html}</datalist>',

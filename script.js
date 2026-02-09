@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <input data-field="weight" name="week${week}_day${day}_item${rowIndex}_weight" placeholder="Peso">
         <input data-field="rest" name="week${week}_day${day}_item${rowIndex}_rest" placeholder="Descanso">
         <input data-field="notes" name="week${week}_day${day}_item${rowIndex}_notes" placeholder="Observaciones">
-        <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio">×</button>
+        <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio" title="Quitar ejercicio">×</button>
       `;
       row.querySelector('[data-field="exercise"]').value = values.exercise || "";
       row.querySelector('[data-field="sets"]').value = values.sets || "";
@@ -270,6 +270,39 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
 
+    const setCurrentUser = (username) => {
+      const currentLabel = planEditor.querySelector(".plan-current-user strong");
+      if (currentLabel) {
+        currentLabel.textContent = username;
+      }
+      const userSelect = document.getElementById("plan_user_select");
+      if (userSelect) {
+        userSelect.value = username;
+      }
+      const formUser = planEditor.querySelector('input[name="username"]');
+      if (formUser) {
+        formUser.value = username;
+      }
+    };
+
+    const loadUserPlan = (username) => {
+      const userPlan = planData[username];
+      if (!userPlan) {
+        return;
+      }
+      const planTitle = planEditor.querySelector("#plan_title");
+      if (planTitle) {
+        planTitle.value = userPlan.title || "";
+      }
+      const weekBlocks = Array.from(
+        planEditor.querySelectorAll(".plan-week-block")
+      );
+      weekBlocks.forEach((block, idx) => {
+        applyWeekData(block, (userPlan.weeks && userPlan.weeks[idx]) || {});
+      });
+      setCurrentUser(username);
+    };
+
     planEditor.querySelectorAll(".plan-day-card").forEach(updateRestState);
 
     planEditor.addEventListener("change", (event) => {
@@ -284,6 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
     planEditor.addEventListener("click", (event) => {
       const addButton = event.target.closest(".plan-item-add");
       if (addButton) {
+        event.preventDefault();
         const dayCard = addButton.closest(".plan-day-card");
         if (!dayCard) return;
         const week = Number(dayCard.dataset.week || 0);
@@ -300,6 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const removeButton = event.target.closest(".plan-item-remove");
       if (removeButton) {
+        event.preventDefault();
         const row = removeButton.closest(".plan-item-row");
         const container = removeButton.closest(".plan-items");
         if (row && container) {
@@ -312,6 +347,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const moveDayButton = event.target.closest(".plan-day-move");
       if (moveDayButton) {
+        event.preventDefault();
         const dayCard = moveDayButton.closest(".plan-day-card");
         if (!dayCard) return;
         const weekBlock = dayCard.closest(".plan-week-block");
@@ -332,6 +368,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const moveWeekButton = event.target.closest(".plan-week-move");
       if (moveWeekButton) {
+        event.preventDefault();
         const weekBlock = moveWeekButton.closest(".plan-week-block");
         if (!weekBlock) return;
         const direction = moveWeekButton.dataset.action;
@@ -349,16 +386,30 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
+    const loadUserButton = document.getElementById("load_user_btn");
+    if (loadUserButton) {
+      loadUserButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const userSelect = document.getElementById("plan_user_select");
+        const username = userSelect ? userSelect.value : "";
+        if (!username) return;
+        loadUserPlan(username);
+      });
+    }
+
     const copyButton = document.getElementById("copy_week_btn");
     if (copyButton) {
-      copyButton.addEventListener("click", () => {
+      copyButton.addEventListener("click", (event) => {
+        event.preventDefault();
         const userSelect = document.getElementById("copy_plan_user");
         const weekSelect = document.getElementById("copy_plan_week");
+        const targetUserSelect = document.getElementById("copy_target_user");
         const targetSelect = document.getElementById("copy_target_week");
         const sourceUser = userSelect ? userSelect.value : "";
         const sourceWeek = Number(weekSelect ? weekSelect.value : 0);
+        const targetUser = targetUserSelect ? targetUserSelect.value : "";
         const targetWeek = Number(targetSelect ? targetSelect.value : 0);
-        if (!sourceUser || !sourceWeek || !targetWeek) {
+        if (!sourceUser || !sourceWeek || !targetWeek || !targetUser) {
           return;
         }
         const sourcePlan = planData[sourceUser];
@@ -369,11 +420,70 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!weekData) {
           return;
         }
+        if (targetUser !== (planEditor.querySelector('input[name="username"]') || {}).value) {
+          loadUserPlan(targetUser);
+        }
         const targetBlock = planEditor.querySelector(
           `.plan-week-block[data-week="${targetWeek}"]`
         );
         if (targetBlock) {
           applyWeekData(targetBlock, weekData);
+        }
+      });
+    }
+
+    const copyDayButton = document.getElementById("copy_day_btn");
+    if (copyDayButton) {
+      copyDayButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        const userSelect = document.getElementById("copy_day_user");
+        const weekSelect = document.getElementById("copy_day_week");
+        const daySelect = document.getElementById("copy_day_day");
+        const targetUserSelect = document.getElementById("copy_day_target_user");
+        const targetWeekSelect = document.getElementById("copy_day_target_week");
+        const targetDaySelect = document.getElementById("copy_day_target_day");
+        const sourceUser = userSelect ? userSelect.value : "";
+        const sourceWeek = Number(weekSelect ? weekSelect.value : 0);
+        const sourceDay = Number(daySelect ? daySelect.value : 0);
+        const targetUser = targetUserSelect ? targetUserSelect.value : "";
+        const targetWeek = Number(targetWeekSelect ? targetWeekSelect.value : 0);
+        const targetDay = Number(targetDaySelect ? targetDaySelect.value : 0);
+        if (
+          !sourceUser ||
+          !sourceWeek ||
+          !sourceDay ||
+          !targetUser ||
+          !targetWeek ||
+          !targetDay
+        ) {
+          return;
+        }
+        const sourcePlan = planData[sourceUser];
+        if (!sourcePlan || !Array.isArray(sourcePlan.weeks)) {
+          return;
+        }
+        const weekData = sourcePlan.weeks[sourceWeek - 1];
+        if (!weekData || !Array.isArray(weekData.days)) {
+          return;
+        }
+        const dayData = weekData.days[sourceDay - 1];
+        if (!dayData) {
+          return;
+        }
+        if (targetUser !== (planEditor.querySelector('input[name="username"]') || {}).value) {
+          loadUserPlan(targetUser);
+        }
+        const targetBlock = planEditor.querySelector(
+          `.plan-week-block[data-week="${targetWeek}"]`
+        );
+        if (!targetBlock) {
+          return;
+        }
+        const targetDayCard = targetBlock.querySelector(
+          `.plan-day-card[data-day="${targetDay}"]`
+        );
+        if (targetDayCard) {
+          applyDayData(targetDayCard, dayData);
         }
       });
     }

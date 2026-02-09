@@ -1351,6 +1351,33 @@ h3 {
   font-family: inherit;
 }
 
+.plan-tool-note {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.plan-current-user {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.plan-current-user strong {
+  color: var(--green-300);
+}
+
+.plan-weeks-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 1fr);
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 16px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
 .plan-days-row {
   display: grid;
   grid-auto-flow: column;
@@ -1770,6 +1797,10 @@ h3 {
   .plan-day-head {
     grid-template-columns: 1fr;
   }
+
+  .plan-weeks-row {
+    grid-auto-columns: minmax(300px, 90vw);
+  }
 }
 
 @media (max-width: 600px) {
@@ -1849,6 +1880,10 @@ h3 {
 
   .plan-item-row {
     grid-template-columns: 1fr;
+  }
+
+  .plan-weeks-row {
+    grid-auto-columns: 92vw;
   }
 }
 
