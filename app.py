@@ -311,6 +311,32 @@ def db_key_for_path(path: Path) -> str:
     return path.name
 
 
+def get_storage_status() -> dict:
+    if not db_enabled():
+        return {
+            "mode": "local",
+            "title": "Almacenamiento: JSON local (no persistente en deploy)",
+            "detail": "DATABASE_URL no está definido en este servicio.",
+        }
+    try:
+        with db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT count(*) FROM {DB_TABLE}")
+                row = cur.fetchone()
+        count = int(row[0]) if row else 0
+        return {
+            "mode": "db_ok",
+            "title": "Almacenamiento: PostgreSQL (Neon) activo",
+            "detail": f"Tabla {DB_TABLE} accesible. Claves guardadas: {count}.",
+        }
+    except Exception as exc:
+        return {
+            "mode": "db_error",
+            "title": "Almacenamiento: error conectando a Neon",
+            "detail": f"{type(exc).__name__}: {exc}",
+        }
+
+
 def db_bootstrap() -> None:
     if not db_enabled():
         return
@@ -1118,7 +1144,7 @@ def render_chat_panel(username: str, role: str) -> str:
     )
 
 
-def render_coach_dashboard(applications: list[dict]) -> str:
+def render_coach_dashboard(applications: list[dict], storage_status: dict) -> str:
     now = datetime.now()
     this_month = 0
     duplicate_rows = 0
@@ -1149,6 +1175,12 @@ def render_coach_dashboard(applications: list[dict]) -> str:
     total = len(applications)
     approved = sum(1 for app in applications if app.get("approved"))
     pending = total - approved
+    storage_mode = storage_status.get("mode", "local")
+    storage_class = "storage-local"
+    if storage_mode == "db_ok":
+        storage_class = "storage-ok"
+    elif storage_mode == "db_error":
+        storage_class = "storage-error"
     return "\n".join(
         [
             '<div class="admin-card glass-card admin-wide coach-dashboard">',
@@ -1156,6 +1188,8 @@ def render_coach_dashboard(applications: list[dict]) -> str:
             "    <h3>Gestión de alumnos</h3>",
             '    <a class="btn glass ghost small" href="/admin/export/json">⬇ Descargar todos los JSON en ZIP</a>',
             "  </div>",
+            f'  <div class="storage-pill {storage_class}"><strong>{html.escape(str(storage_status.get("title","")))}'
+            f'</strong><span>{html.escape(str(storage_status.get("detail","")))}</span></div>',
             "  <div class=\"coach-stats\">",
             f"    <span>Total de alumnos: <strong>{total}</strong></span>",
             f"    <span>Activos: <strong>{approved}</strong></span>",
@@ -2325,13 +2359,14 @@ def render_admin_page(query: dict[str, list[str]]) -> str:
     videos = load_json(VIDEOS_PATH, [])
     applications = load_applications()
     content = load_content()
+    storage_status = get_storage_status()
     settings = load_json(SETTINGS_PATH, {})
     smtp = normalize_smtp_settings(settings.get("smtp", {}))
     settings["smtp"] = smtp
     selected_user = (query.get("plan_user") or [""])[0]
     replacements = {
         "ADMIN_MESSAGE": build_admin_alert(query),
-        "COACH_DASHBOARD": render_coach_dashboard(applications),
+        "COACH_DASHBOARD": render_coach_dashboard(applications, storage_status),
         "PLAN_EDITOR": render_plan_editor(applications, selected_user),
         "CONTENT_FORM": render_content_form(content),
         "EVENT_LIST": render_event_list(events),
