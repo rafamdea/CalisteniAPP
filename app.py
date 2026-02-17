@@ -23,6 +23,11 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+try:
+    import psycopg
+except Exception:  # pragma: no cover - optional dependency until DATABASE_URL is used
+    psycopg = None
+
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("AURA_DATA_DIR", str(BASE_DIR / "data")))
 UPLOAD_DIR = Path(os.environ.get("AURA_UPLOAD_DIR", str(BASE_DIR / "uploads")))
@@ -46,6 +51,10 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov"}
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DB_TABLE = os.environ.get("AURA_DB_TABLE", "aura_state").strip() or "aura_state"
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_TABLE):
+    DB_TABLE = "aura_state"
 
 
 @dataclass
@@ -284,7 +293,106 @@ def verify_password(password: str, salt_b64: str, hash_b64: str) -> bool:
     return secrets.compare_digest(hashed, expected)
 
 
+def db_enabled() -> bool:
+    return bool(DATABASE_URL)
+
+
+def db_connect():
+    if not db_enabled():
+        return None
+    if psycopg is None:
+        raise RuntimeError("DATABASE_URL is set but psycopg is not installed.")
+    return psycopg.connect(DATABASE_URL, autocommit=True)
+
+
+def db_key_for_path(path: Path) -> str:
+    return path.name
+
+
+def db_bootstrap() -> None:
+    if not db_enabled():
+        return
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {DB_TABLE} (
+                  key TEXT PRIMARY KEY,
+                  value JSONB NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+
+
+def db_has_key(path: Path) -> bool:
+    key = db_key_for_path(path)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT 1 FROM {DB_TABLE} WHERE key = %s LIMIT 1", (key,))
+            row = cur.fetchone()
+    return bool(row)
+
+
+def db_load_json(path: Path, default):
+    key = db_key_for_path(path)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT value FROM {DB_TABLE} WHERE key = %s LIMIT 1", (key,))
+            row = cur.fetchone()
+    if not row:
+        return default
+    value = row[0]
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return default
+    return value
+
+
+def db_save_json(path: Path, data) -> None:
+    key = db_key_for_path(path)
+    payload = json.dumps(data, ensure_ascii=True)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE} (key, value, updated_at)
+                VALUES (%s, %s::jsonb, NOW())
+                ON CONFLICT (key)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                """,
+                (key, payload),
+            )
+
+
+def data_key_exists(path: Path) -> bool:
+    if db_enabled():
+        return db_has_key(path)
+    return path.exists()
+
+
+def seed_json_key(path: Path, default) -> None:
+    if data_key_exists(path):
+        return
+    if db_enabled() and path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                file_data = json.load(handle)
+            save_json(path, file_data)
+            return
+        except Exception:
+            pass
+    save_json(path, default)
+
+
 def load_json(path: Path, default):
+    if db_enabled():
+        try:
+            return db_load_json(path, default)
+        except Exception:
+            return default
     if not path.exists():
         return default
     with DATA_LOCK:
@@ -296,6 +404,9 @@ def load_json(path: Path, default):
 
 
 def save_json(path: Path, data) -> None:
+    if db_enabled():
+        db_save_json(path, data)
+        return
     with DATA_LOCK:
         with path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, ensure_ascii=True)
@@ -326,35 +437,27 @@ def smtp_defaults_from_env() -> dict:
 
 
 def ensure_data_files() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
+    if not db_enabled():
+        DATA_DIR.mkdir(exist_ok=True)
+    else:
+        db_bootstrap()
     UPLOAD_DIR.mkdir(exist_ok=True)
 
-    if not EVENTS_PATH.exists():
-        save_json(EVENTS_PATH, DEFAULT_EVENTS)
+    seed_json_key(EVENTS_PATH, DEFAULT_EVENTS)
+    seed_json_key(VIDEOS_PATH, DEFAULT_VIDEOS)
+    seed_json_key(APPLICATIONS_PATH, [])
+    seed_json_key(SUBMISSIONS_PATH, [])
+    seed_json_key(SESSIONS_PATH, {})
 
-    if not VIDEOS_PATH.exists():
-        save_json(VIDEOS_PATH, DEFAULT_VIDEOS)
+    salt, pw_hash = hash_password("admin")
+    smtp_defaults = smtp_defaults_from_env()
+    settings = {
+        "admin": {"username": "admin", "salt": salt, "hash": pw_hash},
+        "smtp": smtp_defaults,
+    }
+    seed_json_key(SETTINGS_PATH, settings)
 
-    if not APPLICATIONS_PATH.exists():
-        save_json(APPLICATIONS_PATH, [])
-
-    if not SUBMISSIONS_PATH.exists():
-        save_json(SUBMISSIONS_PATH, [])
-
-    if not SESSIONS_PATH.exists():
-        save_json(SESSIONS_PATH, {})
-
-    if not SETTINGS_PATH.exists():
-        salt, pw_hash = hash_password("admin")
-        smtp_defaults = smtp_defaults_from_env()
-        settings = {
-            "admin": {"username": "admin", "salt": salt, "hash": pw_hash},
-            "smtp": smtp_defaults,
-        }
-        save_json(SETTINGS_PATH, settings)
-
-    if not CONTENT_PATH.exists():
-        save_json(CONTENT_PATH, DEFAULT_CONTENT)
+    seed_json_key(CONTENT_PATH, DEFAULT_CONTENT)
 
 
 def copy_default_plan() -> dict:
@@ -2391,19 +2494,30 @@ class AuraHandler(SimpleHTTPRequestHandler):
         timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         memory = BytesIO()
         files = [
-            ("applications.json", APPLICATIONS_PATH),
             ("events.json", EVENTS_PATH),
             ("videos.json", VIDEOS_PATH),
+            ("applications.json", APPLICATIONS_PATH),
             ("submissions.json", SUBMISSIONS_PATH),
-            ("content.json", CONTENT_PATH),
+            ("sessions.json", SESSIONS_PATH),
             ("settings.json", SETTINGS_PATH),
+            ("content.json", CONTENT_PATH),
         ]
         with ZipFile(memory, mode="w", compression=ZIP_DEFLATED) as bundle:
-            for archive_name, source in files:
-                if source.exists():
-                    bundle.writestr(archive_name, source.read_text(encoding="utf-8"))
-                else:
-                    bundle.writestr(archive_name, "[]")
+            defaults = {
+                "events.json": [],
+                "videos.json": [],
+                "applications.json": [],
+                "submissions.json": [],
+                "sessions.json": {},
+                "settings.json": {},
+                "content.json": {},
+            }
+            for archive_name, source_path in files:
+                payload = load_json(source_path, defaults.get(archive_name, {}))
+                bundle.writestr(
+                    archive_name,
+                    json.dumps(payload, indent=2, ensure_ascii=True),
+                )
         payload = memory.getvalue()
         self.send_bytes(payload, "application/zip", f"aura-backup-{timestamp}.zip")
 
