@@ -28,6 +28,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency until DATABASE_URL is used
     psycopg = None
 
+try:
+    import psycopg2
+except Exception:  # pragma: no cover - compatibility fallback
+    psycopg2 = None
+
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("AURA_DATA_DIR", str(BASE_DIR / "data")))
 UPLOAD_DIR = Path(os.environ.get("AURA_UPLOAD_DIR", str(BASE_DIR / "uploads")))
@@ -52,11 +57,43 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov"}
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+
+def normalize_database_url(raw_value: str) -> str:
+    value = str(raw_value or "").strip()
+    if not value:
+        return ""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    lowered = value.lower()
+    if lowered.startswith("psql "):
+        match = re.search(r"(postgres(?:ql)?://[^\s'\"]+)", value)
+        if match:
+            value = match.group(1).strip()
+    return value
+
+
+def resolve_database_url() -> tuple[str, str]:
+    candidates = [
+        "DATABASE_URL",
+        "AURA_DATABASE_URL",
+        "NEON_DATABASE_URL",
+        "POSTGRES_URL",
+        "POSTGRESQL_URL",
+    ]
+    for key in candidates:
+        cleaned = normalize_database_url(os.environ.get(key, ""))
+        if cleaned:
+            return cleaned, key
+    return "", ""
+
+
+DATABASE_URL, DATABASE_URL_SOURCE = resolve_database_url()
 DB_TABLE = os.environ.get("AURA_DB_TABLE", "aura_state").strip() or "aura_state"
 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_TABLE):
     DB_TABLE = "aura_state"
 DAY_LABELS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
+DB_LAST_ERROR = ""
 
 
 @dataclass
@@ -299,12 +336,21 @@ def db_enabled() -> bool:
     return bool(DATABASE_URL)
 
 
+def remember_db_error(exc: Exception) -> None:
+    global DB_LAST_ERROR
+    DB_LAST_ERROR = f"{type(exc).__name__}: {exc}"
+
+
 def db_connect():
     if not db_enabled():
         return None
-    if psycopg is None:
-        raise RuntimeError("DATABASE_URL is set but psycopg is not installed.")
-    return psycopg.connect(DATABASE_URL, autocommit=True)
+    if psycopg is not None:
+        return psycopg.connect(DATABASE_URL, autocommit=True)
+    if psycopg2 is not None:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        return conn
+    raise RuntimeError("DATABASE_URL está definido pero no hay driver PostgreSQL instalado (psycopg/psycopg2).")
 
 
 def db_key_for_path(path: Path) -> str:
@@ -316,7 +362,7 @@ def get_storage_status() -> dict:
         return {
             "mode": "local",
             "title": "Modo temporal (JSON local)",
-            "detail": "Este modo se borra al redeploy. Configura DATABASE_URL en Render para guardar de forma persistente.",
+            "detail": "Este modo se borra al redeploy. Configura DATABASE_URL (o NEON_DATABASE_URL) en Render para guardar de forma persistente.",
         }
     try:
         with db_connect() as conn:
@@ -324,16 +370,19 @@ def get_storage_status() -> dict:
                 cur.execute(f"SELECT count(*) FROM {DB_TABLE}")
                 row = cur.fetchone()
         count = int(row[0]) if row else 0
+        global DB_LAST_ERROR
+        DB_LAST_ERROR = ""
         return {
             "mode": "db_ok",
             "title": "Neon conectado",
-            "detail": f"Guardado persistente activo. Registros disponibles: {count}.",
+            "detail": f"Guardado persistente activo ({DATABASE_URL_SOURCE or 'DATABASE_URL'}). Registros: {count}.",
         }
     except Exception as exc:
+        remember_db_error(exc)
         return {
             "mode": "db_error",
             "title": "Error conectando con Neon",
-            "detail": "Se está usando JSON local temporal hasta recuperar la conexión.",
+            "detail": f"No se puede usar {DATABASE_URL_SOURCE or 'DATABASE_URL'} ahora mismo. Se usa JSON local temporal.",
             "debug": f"{type(exc).__name__}: {exc}",
         }
 
@@ -398,7 +447,11 @@ def db_save_json(path: Path, data) -> None:
 
 def data_key_exists(path: Path) -> bool:
     if db_enabled():
-        return db_has_key(path)
+        try:
+            return db_has_key(path)
+        except Exception as exc:
+            remember_db_error(exc)
+            return path.exists()
     return path.exists()
 
 
@@ -420,8 +473,8 @@ def load_json(path: Path, default):
     if db_enabled():
         try:
             return db_load_json(path, default)
-        except Exception:
-            return default
+        except Exception as exc:
+            remember_db_error(exc)
     if not path.exists():
         return default
     with DATA_LOCK:
@@ -434,8 +487,11 @@ def load_json(path: Path, default):
 
 def save_json(path: Path, data) -> None:
     if db_enabled():
-        db_save_json(path, data)
-        return
+        try:
+            db_save_json(path, data)
+            return
+        except Exception as exc:
+            remember_db_error(exc)
     with DATA_LOCK:
         with path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, ensure_ascii=True)
@@ -466,10 +522,12 @@ def smtp_defaults_from_env() -> dict:
 
 
 def ensure_data_files() -> None:
-    if not db_enabled():
-        DATA_DIR.mkdir(exist_ok=True)
-    else:
-        db_bootstrap()
+    DATA_DIR.mkdir(exist_ok=True)
+    if db_enabled():
+        try:
+            db_bootstrap()
+        except Exception as exc:
+            remember_db_error(exc)
     UPLOAD_DIR.mkdir(exist_ok=True)
 
     seed_json_key(EVENTS_PATH, DEFAULT_EVENTS)
@@ -2046,7 +2104,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             rest_flag = "checked" if day.get("rest") else ""
             card_class = "plan-day-card is-rest" if day.get("rest") else "plan-day-card"
             items = day.get("items") if isinstance(day.get("items"), list) else []
-            min_rows = 3
+            min_rows = 1
             row_count = max(len(items) + 1, min_rows)
             rows = []
             for row_index in range(1, row_count + 1):
@@ -2068,9 +2126,11 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                         '      <button type="button" class="plan-day-clear" aria-label="Vaciar día" title="Vaciar día">🧹</button>',
                         "    </div>",
                         "  </div>",
-                        '  <div class="plan-item-head"><span>Ejercicio</span><span>S</span><span>R</span><span>Peso</span><span>Desc.</span><span>Notas</span></div>',
-                        '  <div class="plan-items">',
+                        '  <div class="plan-item-table">',
+                        '    <div class="plan-item-head"><span>Ejercicio</span><span>Series</span><span>Reps</span><span>Peso</span><span>Descanso</span><span>Notas</span><span></span></div>',
+                        '    <div class="plan-items">',
                         "\n".join(rows),
+                        "    </div>",
                         "  </div>",
                         '  <p class="plan-rest-note">Descanso / movilidad</p>',
                         '  <button class="btn glass ghost small plan-item-add" type="button">Añadir ejercicio</button>',
@@ -3910,6 +3970,16 @@ def run_server(port: int | None = None, host: str | None = None) -> None:
         host = os.environ.get("HOST", "0.0.0.0")
     server_address = (host, port)
     httpd = ThreadingHTTPServer(server_address, AuraHandler)
+    if db_enabled():
+        print(
+            "Database URL detectada en "
+            f"{DATABASE_URL_SOURCE or 'DATABASE_URL'} | driver="
+            f"{'psycopg' if psycopg is not None else ('psycopg2' if psycopg2 is not None else 'none')}"
+        )
+        if DB_LAST_ERROR:
+            print(f"Advertencia DB: {DB_LAST_ERROR}")
+    else:
+        print("Database URL no detectada. Modo JSON local temporal.")
     print(f"Serving on http://{host}:{port}")
     try:
         httpd.serve_forever()

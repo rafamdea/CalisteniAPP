@@ -258,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (itemsContainer) {
         itemsContainer.innerHTML = "";
         const items = Array.isArray(data.items) ? data.items : [];
-        const rowsNeeded = Math.max(items.length + 1, 3);
+        const rowsNeeded = Math.max(items.length + 1, 1);
         for (let i = 0; i < rowsNeeded; i += 1) {
           itemsContainer.appendChild(buildRow(week, day, i + 1, items[i] || {}));
         }
@@ -761,6 +761,52 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     videoAdminSearch.addEventListener("input", filterMedia);
     filterMedia();
+  }
+
+  const adminTabs = document.getElementById("admin_section_tabs");
+  if (adminTabs) {
+    const tabButtons = Array.from(
+      adminTabs.querySelectorAll("[data-admin-section]")
+    );
+    const tabPanels = Array.from(
+      document.querySelectorAll("[data-admin-section-panel]")
+    );
+    const hasSection = (value) =>
+      tabButtons.some((button) => button.dataset.adminSection === value);
+    const currentUrl = new URL(window.location.href);
+    let initialSection = "inicio";
+    const fromQuery = currentUrl.searchParams.get("admin_section");
+    if (fromQuery && hasSection(fromQuery)) {
+      initialSection = fromQuery;
+    } else if (
+      currentUrl.hash === "#plan" ||
+      currentUrl.searchParams.has("plan_user")
+    ) {
+      initialSection = "alumnos";
+    }
+    const activateSection = (section, syncUrl = true) => {
+      if (!hasSection(section)) {
+        return;
+      }
+      tabButtons.forEach((button) => {
+        const isActive = button.dataset.adminSection === section;
+        button.classList.toggle("is-active", isActive);
+      });
+      tabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.adminSectionPanel !== section;
+      });
+      if (syncUrl) {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("admin_section", section);
+        window.history.replaceState({}, "", nextUrl.toString());
+      }
+    };
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        activateSection(button.dataset.adminSection || "inicio");
+      });
+    });
+    activateSection(initialSection, false);
   }
 
   const portalWeekSelect = document.getElementById("portal_week_select");
