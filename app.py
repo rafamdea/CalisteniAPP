@@ -39,6 +39,7 @@ EVENTS_PATH = DATA_DIR / "events.json"
 VIDEOS_PATH = DATA_DIR / "videos.json"
 APPLICATIONS_PATH = DATA_DIR / "applications.json"
 SUBMISSIONS_PATH = DATA_DIR / "submissions.json"
+CHATS_PATH = DATA_DIR / "chats.json"
 SESSIONS_PATH = DATA_DIR / "sessions.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 CONTENT_PATH = DATA_DIR / "content.json"
@@ -55,6 +56,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_TABLE = os.environ.get("AURA_DB_TABLE", "aura_state").strip() or "aura_state"
 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_TABLE):
     DB_TABLE = "aura_state"
+DAY_LABELS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
 
 
 @dataclass
@@ -447,6 +449,7 @@ def ensure_data_files() -> None:
     seed_json_key(VIDEOS_PATH, DEFAULT_VIDEOS)
     seed_json_key(APPLICATIONS_PATH, [])
     seed_json_key(SUBMISSIONS_PATH, [])
+    seed_json_key(CHATS_PATH, [])
     seed_json_key(SESSIONS_PATH, {})
 
     salt, pw_hash = hash_password("admin")
@@ -568,6 +571,9 @@ def normalize_plan_item(item) -> dict:
         rest_value = str(item.get("rest", "")).strip()
         if not rest_value:
             rest_value = str(item.get("accessories", "")).strip()
+        status_value = str(item.get("status", "")).strip()
+        if status_value not in {"done", "missed", ""}:
+            status_value = ""
         return {
             "exercise": str(item.get("exercise", "")).strip(),
             "sets": str(item.get("sets", "")).strip(),
@@ -575,6 +581,9 @@ def normalize_plan_item(item) -> dict:
             "weight": str(item.get("weight", "")).strip(),
             "rest": rest_value,
             "notes": str(item.get("notes", "")).strip(),
+            "status": status_value,
+            "status_note": str(item.get("status_note", item.get("result_note", ""))).strip(),
+            "student_note": str(item.get("student_note", item.get("feedback", ""))).strip(),
         }
     text = str(item).strip()
     if not text:
@@ -586,6 +595,9 @@ def normalize_plan_item(item) -> dict:
         "weight": "",
         "rest": "",
         "notes": "",
+        "status": "",
+        "status_note": "",
+        "student_note": "",
     }
 
 
@@ -936,6 +948,176 @@ def format_date(value: int | float | str) -> str:
     return time.strftime("%d-%m-%Y", time.localtime(timestamp))
 
 
+def format_datetime(value: int | float | str) -> str:
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return ""
+    return time.strftime("%d-%m %H:%M", time.localtime(timestamp))
+
+
+def compute_day_progress(day: dict) -> dict:
+    items = day.get("items") if isinstance(day, dict) else []
+    if not isinstance(items, list):
+        items = []
+    total = len([item for item in items if isinstance(item, dict) and str(item.get("exercise", "")).strip()])
+    done = 0
+    missed = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status", "")).strip()
+        if status == "done":
+            done += 1
+        elif status == "missed":
+            missed += 1
+    pending = max(total - done - missed, 0)
+    done_pct = int(round((done / total) * 100)) if total else 0
+    missed_pct = int(round((missed / total) * 100)) if total else 0
+    pending_pct = max(0, 100 - done_pct - missed_pct) if total else 0
+    return {
+        "total": total,
+        "done": done,
+        "missed": missed,
+        "pending": pending,
+        "done_pct": done_pct,
+        "missed_pct": missed_pct,
+        "pending_pct": pending_pct,
+    }
+
+
+def compute_week_progress(week: dict) -> dict:
+    days = week.get("days") if isinstance(week, dict) else []
+    if not isinstance(days, list):
+        days = []
+    done = 0
+    missed = 0
+    pending = 0
+    total = 0
+    for day in days:
+        day_stats = compute_day_progress(day)
+        total += day_stats["total"]
+        done += day_stats["done"]
+        missed += day_stats["missed"]
+        pending += day_stats["pending"]
+    done_pct = int(round((done / total) * 100)) if total else 0
+    missed_pct = int(round((missed / total) * 100)) if total else 0
+    pending_pct = max(0, 100 - done_pct - missed_pct) if total else 0
+    return {
+        "total": total,
+        "done": done,
+        "missed": missed,
+        "pending": pending,
+        "done_pct": done_pct,
+        "missed_pct": missed_pct,
+        "pending_pct": pending_pct,
+    }
+
+
+def build_progress_payload(plan: dict) -> dict:
+    normalized = normalize_plan(plan)
+    week_payload = []
+    for index, week in enumerate(normalized.get("weeks", []), start=1):
+        stats = compute_week_progress(week)
+        week_payload.append(
+            {
+                "week": index,
+                "title": week.get("title", f"Semana {index}"),
+                **stats,
+            }
+        )
+    return {"weeks": week_payload}
+
+
+def load_chat_messages(username: str) -> list[dict]:
+    records = load_json(CHATS_PATH, [])
+    if not isinstance(records, list):
+        return []
+    target = username.strip().lower()
+    filtered = []
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("username", "")).strip().lower() != target:
+            continue
+        try:
+            created_at = int(item.get("created_at", 0) or 0)
+        except (TypeError, ValueError):
+            created_at = 0
+        filtered.append(
+            {
+                "id": str(item.get("id", "")),
+                "username": str(item.get("username", "")),
+                "author": str(item.get("author", "")),
+                "text": str(item.get("text", "")),
+                "created_at": created_at,
+            }
+        )
+    filtered.sort(key=lambda entry: entry.get("created_at", 0))
+    return filtered
+
+
+def render_chat_panel(username: str, role: str) -> str:
+    messages = load_chat_messages(username)
+    items = []
+    for msg in messages[-200:]:
+        author = msg.get("author", "")
+        own = "is-own" if (role == "user" and author == "user") or (role == "admin" and author == "coach") else ""
+        author_label = "Alumno" if author == "user" else "Profesor"
+        created_at = format_datetime(msg.get("created_at", 0))
+        text = html.escape(msg.get("text", ""))
+        items.append(
+            "\n".join(
+                [
+                    f'<li class="chat-message {own}">',
+                    f'  <span class="chat-author">{author_label}</span>',
+                    f"  <p>{text}</p>",
+                    f'  <span class="chat-time">{created_at}</span>',
+                    "</li>",
+                ]
+            )
+        )
+    list_html = "\n".join(items) if items else '<li class="chat-empty">Sin mensajes todavía.</li>'
+    if role == "admin":
+        return "\n".join(
+            [
+                '<div class="portal-card glass-card chat-panel">',
+                f'  <h3 id="coach_chat_title">Comentarios con {html.escape(username)}</h3>',
+                f'  <ul id="coach_chat_list" class="chat-list">{list_html}</ul>',
+                '  <form class="admin-form chat-form" action="/admin/chat/send" method="post">',
+                f'    <input id="coach_chat_username" type="hidden" name="username" value="{html.escape(username)}">',
+                '    <div class="form-field">',
+                '      <label for="coach_chat_text">Comentario para el alumno</label>',
+                '      <textarea id="coach_chat_text" name="text" rows="3" placeholder="Escribe un mensaje..." required></textarea>',
+                "    </div>",
+                '    <button class="btn glass primary small" type="submit">Enviar</button>',
+                "  </form>",
+                "</div>",
+            ]
+        )
+    else:
+        form_html = "\n".join(
+            [
+                '<form class="admin-form chat-form" action="/portal/chat/send" method="post">',
+                '  <div class="form-field">',
+                '    <label for="user_chat_text">Comentarios con tu profesor</label>',
+                '    <textarea id="user_chat_text" name="text" rows="3" placeholder="Escribe tu consulta o comentario..." required></textarea>',
+                "  </div>",
+                '  <button class="btn glass primary small" type="submit">Enviar</button>',
+                "</form>",
+            ]
+        )
+    return "\n".join(
+        [
+            '<div class="portal-card glass-card chat-panel">',
+            "  <h3>Comentarios con tu profesor</h3>",
+            f'  <ul class="chat-list">{list_html}</ul>',
+            form_html,
+            "</div>",
+        ]
+    )
+
+
 def render_coach_dashboard(applications: list[dict]) -> str:
     now = datetime.now()
     this_month = 0
@@ -1045,31 +1227,55 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
     for week_index, week in enumerate(normalized.get("weeks", []), start=1):
         week_title = html.escape(week.get("title", f"Semana {week_index}"))
         week_summary = html.escape(week.get("summary", ""))
+        week_stats = compute_week_progress(week)
         hidden_class = ""
         if active_week and active_week != week_index:
             hidden_class = " is-hidden-week"
+        donut_done = week_stats["done_pct"]
+        donut_missed = week_stats["missed_pct"]
+        donut_pending = max(0, 100 - donut_done - donut_missed)
+        donut_style = (
+            "style=\"--done:"
+            f"{donut_done};--missed:{donut_missed};--pending:{donut_pending};\""
+        )
         parts.append(
             f'    <div class="training-week stagger-item{hidden_class}" id="week{week_index}" data-week="{week_index}">'
         )
-        parts.append(f'      <div class="training-week-title">{week_title}</div>')
+        parts.append('      <div class="training-week-top">')
+        parts.append(f'        <div class="training-week-title">{week_title}</div>')
+        parts.append(
+            f'        <div class="week-kpi"><span>✓ {week_stats["done"]} ({week_stats["done_pct"]}%)</span><span>✕ {week_stats["missed"]} ({week_stats["missed_pct"]}%)</span><span>⏳ {week_stats["pending"]} ({week_stats["pending_pct"]}%)</span></div>'
+        )
+        parts.append("      </div>")
+        parts.append('      <div class="week-chart-row">')
+        parts.append(
+            f'        <div class="week-donut" {donut_style}><span>{week_stats["done_pct"]}%</span></div>'
+        )
+        parts.append(
+            f'        <div class="week-bar"><span style="--done:{donut_done};--missed:{donut_missed};--pending:{donut_pending};"></span></div>'
+        )
+        parts.append("      </div>")
         parts.append('      <div class="day-grid">')
         days = week.get("days") or []
         for day_index, day_text in enumerate(days, start=1):
             day_title = html.escape(day_text.get("title", "")) if isinstance(day_text, dict) else ""
             rest_flag = bool(day_text.get("rest")) if isinstance(day_text, dict) else False
-            status = str(day_text.get("status", "")).strip() if isinstance(day_text, dict) else ""
-            status_note = html.escape(day_text.get("status_note", "")) if isinstance(day_text, dict) else ""
-            feedback = html.escape(day_text.get("feedback", "")) if isinstance(day_text, dict) else ""
+            day_label = day_title or DAY_LABELS[(day_index - 1) % len(DAY_LABELS)]
+            day_stats = compute_day_progress(day_text if isinstance(day_text, dict) else {})
             parts.append('        <div class="day-card">')
-            parts.append(f'          <span class="day-label">Día {day_index}</span>')
-            if day_title:
-                parts.append(f'          <strong class="day-title">{day_title}</strong>')
+            parts.append('          <div class="day-card-head">')
+            parts.append(f'            <span class="day-label">Día {day_index}</span>')
+            parts.append(f'            <strong class="day-title">{html.escape(day_label)}</strong>')
+            parts.append(
+                f'            <span class="day-mini-stats">✓ {day_stats["done"]} · ✕ {day_stats["missed"]} · ⏳ {day_stats["pending"]}</span>'
+            )
+            parts.append("          </div>")
             items = day_text.get("items") if isinstance(day_text, dict) else []
             if rest_flag or not isinstance(items, list) or not items:
                 parts.append('          <p class="plan-empty">Descanso o movilidad.</p>')
             if not rest_flag and isinstance(items, list) and items:
                 parts.append('          <div class="plan-items">')
-                for item in items:
+                for item_index, item in enumerate(items, start=1):
                     if not isinstance(item, dict):
                         continue
                     exercise = html.escape(item.get("exercise", ""))
@@ -1078,6 +1284,17 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
                     weight = html.escape(item.get("weight", ""))
                     rest = html.escape(item.get("rest", ""))
                     notes = html.escape(item.get("notes", ""))
+                    status = str(item.get("status", "")).strip()
+                    status_note = html.escape(item.get("status_note", ""))
+                    student_note = html.escape(item.get("student_note", ""))
+                    status_badge = "Pendiente"
+                    status_class = "pending"
+                    if status == "done":
+                        status_badge = "Completado"
+                        status_class = "done"
+                    elif status == "missed":
+                        status_badge = "Fallado"
+                        status_class = "missed"
                     meta_parts = []
                     if sets:
                         meta_parts.append(f"<span>Series: {sets}</span>")
@@ -1090,38 +1307,38 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
                     if notes:
                         meta_parts.append(f"<span>Notas: {notes}</span>")
                     meta_html = "".join(meta_parts) if meta_parts else "<span>Trabajo técnico.</span>"
-                    parts.append('            <div class="plan-item">')
-                    parts.append(f"              <h4>{exercise or 'Ejercicio'}</h4>")
+                    parts.append(f'            <div class="plan-item portal-item {status_class}">')
+                    parts.append('              <div class="portal-item-head">')
+                    parts.append(f"                <h4>{exercise or 'Ejercicio'}</h4>")
+                    parts.append(f'                <span class="item-status {status_class}">{status_badge}</span>')
+                    parts.append("              </div>")
                     parts.append(f'              <div class="plan-meta">{meta_html}</div>')
+                    if status_note:
+                        parts.append(f'              <p class="item-status-note">{status_note}</p>')
+                    parts.append('              <form class="item-status-form" action="/portal/item/update" method="post">')
+                    parts.append(f'                <input type="hidden" name="week" value="{week_index}">')
+                    parts.append(f'                <input type="hidden" name="day" value="{day_index}">')
+                    parts.append(f'                <input type="hidden" name="item" value="{item_index}">')
+                    parts.append('                <div class="status-buttons">')
+                    parts.append(
+                        f'                  <button class="status-button done{" is-active" if status == "done" else ""}" type="submit" name="status" value="done">Hecho</button>'
+                    )
+                    parts.append(
+                        f'                  <button class="status-button missed{" is-active" if status == "missed" else ""}" type="submit" name="status" value="missed">Fallé</button>'
+                    )
+                    parts.append("                </div>")
+                    parts.append(
+                        f'                <input class="status-note" name="status_note" type="text" placeholder="Motivo (opcional)" value="{status_note}">'
+                    )
+                    parts.append(
+                        f'                <textarea class="day-feedback" name="student_note" rows="2" placeholder="Pesos usados / sensaciones">{student_note}</textarea>'
+                    )
+                    parts.append(
+                        '                <button class="btn glass ghost small" type="submit">Guardar</button>'
+                    )
+                    parts.append("              </form>")
                     parts.append("            </div>")
                 parts.append("          </div>")
-            status_done = " is-active" if status == "done" else ""
-            status_partial = " is-active" if status == "partial" else ""
-            status_missed = " is-active" if status == "missed" else ""
-            parts.append('          <form class="day-status" action="/portal/day/update" method="post">')
-            parts.append(f'            <input type="hidden" name="week" value="{week_index}">')
-            parts.append(f'            <input type="hidden" name="day" value="{day_index}">')
-            parts.append('            <div class="status-buttons">')
-            parts.append(
-                f'              <button class="status-button done{status_done}" type="submit" name="status" value="done">Hecho</button>'
-            )
-            parts.append(
-                f'              <button class="status-button partial{status_partial}" type="submit" name="status" value="partial">Hecho con descanso</button>'
-            )
-            parts.append(
-                f'              <button class="status-button missed{status_missed}" type="submit" name="status" value="missed">No completado</button>'
-            )
-            parts.append("            </div>")
-            parts.append(
-                f'            <input class="status-note" name="status_note" type="text" placeholder="Observaciones (si fue parcial)" value="{status_note}">'
-            )
-            parts.append(
-                f'            <textarea class="day-feedback" name="feedback" rows="3" placeholder="Feedback del día">{feedback}</textarea>'
-            )
-            parts.append(
-                '            <button class="btn glass ghost small" type="submit" name="save" value="1">Guardar nota</button>'
-            )
-            parts.append("          </form>")
             parts.append('        </div>')
         parts.append("      </div>")
         parts.append('      <form class="week-summary" action="/portal/week/update" method="post">')
@@ -1647,6 +1864,9 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
     if not selected_user:
         selected_user = applications[0].get("username", "")
     selected_app = find_application(applications, selected_user) if selected_user else None
+    if not selected_app and applications:
+        selected_user = applications[0].get("username", "")
+        selected_app = applications[0]
     plan = normalize_plan((selected_app or {}).get("plan"))
 
     selector_items = []
@@ -1659,10 +1879,14 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
         f'<div class="user-selector"><span>Selecciona alumno:</span>{"".join(selector_items)}</div>'
     )
     plan_data = {}
+    progress_data = {}
+    chat_data = {}
     for app in applications:
         username = app.get("username", "")
         if not username:
             continue
+        progress_data[username] = build_progress_payload(app.get("plan", {}))
+        chat_data[username] = load_chat_messages(username)
         cleaned_plan = normalize_plan(app.get("plan"))
         for week in cleaned_plan.get("weeks", []):
             week["summary"] = ""
@@ -1670,8 +1894,16 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                 day["status"] = ""
                 day["status_note"] = ""
                 day["feedback"] = ""
+                for item in day.get("items", []):
+                    if not isinstance(item, dict):
+                        continue
+                    item["status"] = ""
+                    item["status_note"] = ""
+                    item["student_note"] = ""
         plan_data[username] = cleaned_plan
     plan_json = json.dumps(plan_data, ensure_ascii=True).replace("</", "<\\/")
+    progress_json = json.dumps(progress_data, ensure_ascii=True).replace("</", "<\\/")
+    chat_json = json.dumps(chat_data, ensure_ascii=True).replace("</", "<\\/")
 
     exercise_options = [
         "Dominadas",
@@ -1740,6 +1972,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                         '      <button type="button" class="plan-day-clear" aria-label="Vaciar día" title="Vaciar día">🧹</button>',
                         "    </div>",
                         "  </div>",
+                        '  <div class="plan-item-head"><span>Ejercicio</span><span>S</span><span>R</span><span>Peso</span><span>Desc.</span><span>Notas</span></div>',
                         '  <div class="plan-items">',
                         "\n".join(rows),
                         "  </div>",
@@ -1752,7 +1985,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
         week_blocks.append(
             "\n".join(
                 [
-                    f'<div class="plan-week-block" data-week="{week_index}">',
+                    f'<div class="plan-week-block{" is-active" if week_index == 1 else ""}" data-week="{week_index}">',
                     '  <div class="plan-week-head">',
                     f'    <div class="plan-week-title-field"><label for="week{week_index}_title">Semana {week_index} - título</label>',
                     f'    <input id="week{week_index}_title" name="week{week_index}_title" type="text" value="{week_title}"></div>',
@@ -1771,11 +2004,51 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             )
         )
 
+    week_tabs_html = (
+        '<div class="plan-week-tabs">'
+        + "".join(
+            [
+                (
+                    f'<button type="button" class="plan-week-tab{" is-active" if i == 1 else ""}" '
+                    f'data-week="{i}">Semana {i}</button>'
+                )
+                for i in range(1, 5)
+            ]
+        )
+        + "</div>"
+    )
+    progress_card_html = "\n".join(
+        [
+            '<div class="coach-progress-card">',
+            "  <h4>Progreso del alumno</h4>",
+            '  <div class="coach-progress-tools">',
+            '    <label for="coach_progress_week">Semana</label>',
+            '    <select id="coach_progress_week">',
+            '      <option value="1">Semana 1</option>',
+            '      <option value="2">Semana 2</option>',
+            '      <option value="3">Semana 3</option>',
+            '      <option value="4">Semana 4</option>',
+            "    </select>",
+            "  </div>",
+            '  <div class="coach-progress-content">',
+            '    <div id="coach_progress_donut" class="coach-progress-donut"><span id="coach_progress_pct">0%</span></div>',
+            '    <div class="coach-progress-kpis">',
+            '      <span class="ok">✓ Completados: <strong id="coach_progress_done">0</strong></span>',
+            '      <span class="bad">✕ Fallados: <strong id="coach_progress_missed">0</strong></span>',
+            '      <span class="wait">⏳ Pendientes: <strong id="coach_progress_pending">0</strong></span>',
+            "    </div>",
+            "  </div>",
+            "</div>",
+        ]
+    )
+    chat_panel_html = render_chat_panel(selected_user, "admin") if selected_user else ""
+
     return "\n".join(
         [
             '<div id="plan" class="admin-card glass-card admin-wide plan-editor">',
             "  <h3>Plan de entrenamiento por alumno</h3>",
             selector_html,
+            progress_card_html,
             "  <div class=\"plan-tools\">",
             "    <div class=\"plan-tool-row\">",
             f"      <span class=\"plan-current-user\">Alumno actual: <strong>{html.escape(selected_user)}</strong></span>",
@@ -1878,13 +2151,17 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             "      <label for=\"plan_title\">Título del plan</label>",
             f"      <input id=\"plan_title\" name=\"plan_title\" type=\"text\" value=\"{html.escape(plan.get('title', 'Plan de entrenamiento'))}\">",
             "    </div>",
+            week_tabs_html,
             '    <div class="plan-weeks-row">',
             "\n".join(week_blocks),
             "    </div>",
             "    <button class=\"btn glass primary\" type=\"submit\">Guardar plan</button>",
             "  </form>",
+            chat_panel_html,
             f'  <datalist id="exercise-options">{datalist_html}</datalist>',
             f'  <script type="application/json" id="plan-data">{plan_json}</script>',
+            f'  <script type="application/json" id="plan-progress-data">{progress_json}</script>',
+            f'  <script type="application/json" id="coach-chat-data">{chat_json}</script>',
             "</div>",
         ]
     )
@@ -2164,6 +2441,7 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
     except (TypeError, ValueError):
         active_week = None
     plan_html = render_training_plan(app.get("plan", {}), active_week=active_week)
+    chat_html = render_chat_panel(portal_user, "user")
     skill = html.escape(app.get("skill", "Sin datos"))
     level = html.escape(app.get("level", ""))
     goal = html.escape(app.get("goal", ""))
@@ -2191,6 +2469,7 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
             summary,
             "</div>",
             plan_html,
+            chat_html,
         ]
     )
     return render_template(PORTAL_TEMPLATE, {"PORTAL_CONTENT": portal_content})
@@ -2498,6 +2777,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
             ("videos.json", VIDEOS_PATH),
             ("applications.json", APPLICATIONS_PATH),
             ("submissions.json", SUBMISSIONS_PATH),
+            ("chats.json", CHATS_PATH),
             ("sessions.json", SESSIONS_PATH),
             ("settings.json", SETTINGS_PATH),
             ("content.json", CONTENT_PATH),
@@ -2508,6 +2788,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
                 "videos.json": [],
                 "applications.json": [],
                 "submissions.json": [],
+                "chats.json": [],
                 "sessions.json": {},
                 "settings.json": {},
                 "content.json": {},
@@ -2594,8 +2875,16 @@ class AuraHandler(SimpleHTTPRequestHandler):
             self.handle_day_update()
             return
 
+        if path == "/portal/item/update":
+            self.handle_item_update()
+            return
+
         if path == "/portal/week/update":
             self.handle_week_update()
+            return
+
+        if path == "/portal/chat/send":
+            self.handle_portal_chat_send()
             return
 
         admin_user = get_session_user(self.headers.get("Cookie"), ADMIN_SESSION_COOKIE, "admin")
@@ -2669,6 +2958,10 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path == "/admin/submissions/delete":
             self.handle_submission_delete()
+            return
+
+        if path == "/admin/chat/send":
+            self.handle_admin_chat_send()
             return
 
         self.send_error(HTTPStatus.NOT_FOUND)
@@ -3220,8 +3513,18 @@ class AuraHandler(SimpleHTTPRequestHandler):
                 day_key = f"week{week_index + 1}_day{day_index + 1}"
                 day_title = data.get(f"{day_key}_title", "").strip()
                 rest_flag = f"{day_key}_rest" in data
-                items = parse_plan_items_from_form(data, week_index + 1, day_index + 1)
                 day = plan["weeks"][week_index]["days"][day_index]
+                old_items = day.get("items", []) if isinstance(day.get("items"), list) else []
+                items = parse_plan_items_from_form(data, week_index + 1, day_index + 1)
+                for item_pos, parsed_item in enumerate(items):
+                    if item_pos >= len(old_items):
+                        continue
+                    old_item = old_items[item_pos]
+                    if not isinstance(old_item, dict):
+                        continue
+                    parsed_item["status"] = str(old_item.get("status", "")).strip()
+                    parsed_item["status_note"] = str(old_item.get("status_note", "")).strip()
+                    parsed_item["student_note"] = str(old_item.get("student_note", "")).strip()
                 day["title"] = day_title
                 day["rest"] = rest_flag
                 day["items"] = [] if rest_flag else items
@@ -3267,6 +3570,50 @@ class AuraHandler(SimpleHTTPRequestHandler):
         save_json(APPLICATIONS_PATH, applications)
         self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
 
+    def handle_item_update(self) -> None:
+        cookie_header = self.headers.get("Cookie")
+        portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
+        if not portal_user:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        data, _ = parse_post_data(self)
+        try:
+            week_index = int(data.get("week", "0")) - 1
+            day_index = int(data.get("day", "0")) - 1
+            item_index = int(data.get("item", "0")) - 1
+        except ValueError:
+            self.redirect("/portal")
+            return
+        if week_index not in range(4) or day_index not in range(7) or item_index < 0:
+            self.redirect("/portal")
+            return
+        status = data.get("status", "").strip()
+        status_note = data.get("status_note", "").strip()
+        student_note = data.get("student_note", "").strip()
+
+        applications = load_applications()
+        app = find_application(applications, portal_user)
+        if not app:
+            self.redirect("/portal")
+            return
+        plan = normalize_plan(app.get("plan"))
+        day = plan["weeks"][week_index]["days"][day_index]
+        items = day.get("items", [])
+        if item_index >= len(items):
+            self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
+            return
+        item = items[item_index]
+        if not isinstance(item, dict):
+            self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
+            return
+        if status in {"done", "missed"}:
+            item["status"] = status
+        item["status_note"] = status_note
+        item["student_note"] = student_note
+        app["plan"] = plan
+        save_json(APPLICATIONS_PATH, applications)
+        self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
+
     def handle_week_update(self) -> None:
         cookie_header = self.headers.get("Cookie")
         portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
@@ -3293,6 +3640,60 @@ class AuraHandler(SimpleHTTPRequestHandler):
         app["plan"] = plan
         save_json(APPLICATIONS_PATH, applications)
         self.redirect(f"/portal?week={week_index + 1}#week{week_index + 1}")
+
+    def handle_portal_chat_send(self) -> None:
+        cookie_header = self.headers.get("Cookie")
+        portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
+        if not portal_user:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        data, _ = parse_post_data(self)
+        text = data.get("text", "").strip()
+        if not text:
+            self.redirect("/portal")
+            return
+        chats = load_json(CHATS_PATH, [])
+        if not isinstance(chats, list):
+            chats = []
+        chats.append(
+            {
+                "id": f"chat_{secrets.token_hex(4)}",
+                "username": portal_user,
+                "author": "user",
+                "text": text,
+                "created_at": int(time.time()),
+            }
+        )
+        save_json(CHATS_PATH, chats)
+        self.redirect("/portal")
+
+    def handle_admin_chat_send(self) -> None:
+        data, _ = parse_post_data(self)
+        username = data.get("username", "").strip()
+        text = data.get("text", "").strip()
+        if not username or not text:
+            self.admin_redirect("error")
+            return
+        applications = load_applications()
+        app = find_application(applications, username)
+        if not app:
+            self.admin_redirect("error")
+            return
+        chats = load_json(CHATS_PATH, [])
+        if not isinstance(chats, list):
+            chats = []
+        chats.append(
+            {
+                "id": f"chat_{secrets.token_hex(4)}",
+                "username": app.get("username", username),
+                "author": "coach",
+                "text": text,
+                "created_at": int(time.time()),
+            }
+        )
+        save_json(CHATS_PATH, chats)
+        plan_param = urllib.parse.quote(app.get("username", username))
+        self.redirect(f"/admin?plan_user={plan_param}#plan")
 
     def handle_submission_add(self) -> None:
         cookie_header = self.headers.get("Cookie")

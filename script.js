@@ -153,12 +153,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const planEditor = document.querySelector(".plan-editor");
   if (planEditor) {
     const planDataEl = document.getElementById("plan-data");
+    const progressDataEl = document.getElementById("plan-progress-data");
+    const chatDataEl = document.getElementById("coach-chat-data");
     let planData = {};
+    let progressData = {};
+    let chatData = {};
     if (planDataEl) {
       try {
         planData = JSON.parse(planDataEl.textContent || "{}");
       } catch (error) {
         planData = {};
+      }
+    }
+    if (progressDataEl) {
+      try {
+        progressData = JSON.parse(progressDataEl.textContent || "{}");
+      } catch (error) {
+        progressData = {};
+      }
+    }
+    if (chatDataEl) {
+      try {
+        chatData = JSON.parse(chatDataEl.textContent || "{}");
+      } catch (error) {
+        chatData = {};
       }
     }
 
@@ -281,6 +299,96 @@ document.addEventListener("DOMContentLoaded", () => {
       days: Array.from({ length: 7 }, (_, idx) => emptyDayData(idx + 1)),
     });
 
+    const activateWeekTab = (weekNumber) => {
+      const selected = Number(weekNumber || 1);
+      planEditor.querySelectorAll(".plan-week-tab").forEach((tab) => {
+        const current = Number(tab.dataset.week || 0);
+        tab.classList.toggle("is-active", current === selected);
+      });
+      planEditor.querySelectorAll(".plan-week-block").forEach((block) => {
+        const current = Number(block.dataset.week || 0);
+        block.classList.toggle("is-active", current === selected);
+      });
+    };
+
+    const renderCoachProgress = (username, weekNumber) => {
+      const weekSelect = document.getElementById("coach_progress_week");
+      const donut = document.getElementById("coach_progress_donut");
+      const pctEl = document.getElementById("coach_progress_pct");
+      const doneEl = document.getElementById("coach_progress_done");
+      const missedEl = document.getElementById("coach_progress_missed");
+      const pendingEl = document.getElementById("coach_progress_pending");
+      const userData = progressData[username];
+      const weeks = userData && Array.isArray(userData.weeks) ? userData.weeks : [];
+      const targetWeek = Number(weekNumber || (weekSelect ? weekSelect.value : 1) || 1);
+      const row = weeks.find((item) => Number(item.week || 0) === targetWeek) || {
+        done: 0,
+        missed: 0,
+        pending: 0,
+        done_pct: 0,
+        missed_pct: 0,
+        pending_pct: 0,
+      };
+      if (weekSelect) {
+        weekSelect.value = String(targetWeek);
+      }
+      if (donut) {
+        donut.style.setProperty("--done", String(row.done_pct || 0));
+        donut.style.setProperty("--missed", String(row.missed_pct || 0));
+        donut.style.setProperty("--pending", String(row.pending_pct || 0));
+      }
+      if (pctEl) pctEl.textContent = `${row.done_pct || 0}%`;
+      if (doneEl) doneEl.textContent = String(row.done || 0);
+      if (missedEl) missedEl.textContent = String(row.missed || 0);
+      if (pendingEl) pendingEl.textContent = String(row.pending || 0);
+    };
+
+    const renderCoachChat = (username) => {
+      const title = document.getElementById("coach_chat_title");
+      const list = document.getElementById("coach_chat_list");
+      const hiddenUser = document.getElementById("coach_chat_username");
+      if (title) {
+        title.textContent = `Comentarios con ${username}`;
+      }
+      if (hiddenUser) {
+        hiddenUser.value = username;
+      }
+      if (!list) {
+        return;
+      }
+      const messages = Array.isArray(chatData[username]) ? chatData[username] : [];
+      if (!messages.length) {
+        list.innerHTML = '<li class="chat-empty">Sin mensajes todavía.</li>';
+        return;
+      }
+      list.innerHTML = messages
+        .slice(-200)
+        .map((message) => {
+          const isOwn = message.author === "coach" ? " is-own" : "";
+          const author = message.author === "coach" ? "Profesor" : "Alumno";
+          const text = String(message.text || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          const created = message.created_at
+            ? new Date(Number(message.created_at) * 1000).toLocaleString("es-ES", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "";
+          return `
+            <li class="chat-message${isOwn}">
+              <span class="chat-author">${author}</span>
+              <p>${text}</p>
+              <span class="chat-time">${created}</span>
+            </li>
+          `;
+        })
+        .join("");
+    };
+
     const setCurrentUser = (username) => {
       const currentLabel = planEditor.querySelector(".plan-current-user strong");
       if (currentLabel) {
@@ -290,10 +398,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (userSelect) {
         userSelect.value = username;
       }
-      const formUser = planEditor.querySelector('input[name="username"]');
-      if (formUser) {
-        formUser.value = username;
-      }
+      planEditor.querySelectorAll('input[name="username"]').forEach((field) => {
+        field.value = username;
+      });
     };
 
     const loadUserPlan = (username) => {
@@ -301,6 +408,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!userPlan) {
         return;
       }
+      const activeTabNode = planEditor.querySelector(".plan-week-tab.is-active");
+      const activeTab =
+        Number(
+          activeTabNode && activeTabNode.dataset ? activeTabNode.dataset.week : 1
+        ) || 1;
       const planTitle = planEditor.querySelector("#plan_title");
       if (planTitle) {
         planTitle.value = userPlan.title || "";
@@ -312,9 +424,31 @@ document.addEventListener("DOMContentLoaded", () => {
         applyWeekData(block, (userPlan.weeks && userPlan.weeks[idx]) || {});
       });
       setCurrentUser(username);
+      activateWeekTab(activeTab);
+      const weekSelect = document.getElementById("coach_progress_week");
+      renderCoachProgress(username, weekSelect ? Number(weekSelect.value || 1) : 1);
+      renderCoachChat(username);
     };
 
     planEditor.querySelectorAll(".plan-day-card").forEach(updateRestState);
+    activateWeekTab(1);
+    planEditor.querySelectorAll(".plan-week-tab").forEach((tab) => {
+      tab.addEventListener("click", (event) => {
+        event.preventDefault();
+        activateWeekTab(Number(tab.dataset.week || 1));
+      });
+    });
+    const initialUser =
+      (planEditor.querySelector('input[name="username"]') || {}).value || "";
+    renderCoachProgress(initialUser, 1);
+    renderCoachChat(initialUser);
+    const progressWeekSelect = document.getElementById("coach_progress_week");
+    if (progressWeekSelect) {
+      progressWeekSelect.addEventListener("change", () => {
+        const user = (planEditor.querySelector('input[name="username"]') || {}).value || "";
+        renderCoachProgress(user, Number(progressWeekSelect.value || 1));
+      });
+    }
 
     planEditor.addEventListener("change", (event) => {
       if (event.target.matches('[data-field="day-rest"]')) {
@@ -471,6 +605,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetBlock) {
           applyWeekData(targetBlock, weekData);
+          activateWeekTab(targetWeek);
         }
       });
     }
@@ -527,6 +662,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetDayCard) {
           applyDayData(targetDayCard, dayData);
+          activateWeekTab(targetWeek);
         }
       });
     }
@@ -570,6 +706,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const sourceData = extractDayData(sourceCard);
         applyDayData(targetCard, sourceData);
         applyDayData(sourceCard, emptyDayData(sourceDay));
+        activateWeekTab(targetWeek);
       });
     }
 
@@ -595,6 +732,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetCard) {
           applyDayData(targetCard, emptyDayData(targetDay));
+          activateWeekTab(targetWeek);
         }
       });
     }

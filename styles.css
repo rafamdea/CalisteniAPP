@@ -892,35 +892,181 @@ h3 {
   font-size: 1.4rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  margin-bottom: 12px;
   color: var(--green-300);
+}
+
+.training-week-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.week-kpi {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.week-kpi span {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.week-chart-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.week-donut {
+  --done: 0;
+  --missed: 0;
+  --pending: 100;
+  width: 94px;
+  height: 94px;
+  border-radius: 999px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    #58d978 0 calc(var(--done) * 1%),
+    #ea625f calc(var(--done) * 1%) calc((var(--done) + var(--missed)) * 1%),
+    #9ca7ba calc((var(--done) + var(--missed)) * 1%) 100%
+  );
+}
+
+.week-donut::before {
+  content: "";
+  position: absolute;
+  inset: 13px;
+  border-radius: 999px;
+  background: rgba(8, 18, 13, 0.96);
+}
+
+.week-donut span {
+  z-index: 1;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.week-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.week-bar span {
+  --done: 0;
+  --missed: 0;
+  --pending: 100;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    #58d978 0 calc(var(--done) * 1%),
+    #ea625f calc(var(--done) * 1%) calc((var(--done) + var(--missed)) * 1%),
+    #9ca7ba calc((var(--done) + var(--missed)) * 1%) 100%
+  );
 }
 
 .day-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .day-card {
-  padding: 12px;
+  padding: 14px;
   border-radius: 16px;
   background: rgba(7, 20, 15, 0.8);
   border: 1px solid rgba(74, 241, 173, 0.18);
-  min-height: 120px;
   display: grid;
-  gap: 8px;
+  gap: 12px;
+}
+
+.day-card-head {
+  display: grid;
+  gap: 4px;
 }
 
 .day-label {
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
   color: rgba(255, 255, 255, 0.7);
+}
+
+.day-mini-stats {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .day-card p {
   font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.portal-item {
+  gap: 10px;
+}
+
+.portal-item.done {
+  border-color: rgba(88, 217, 120, 0.45);
+  background: rgba(88, 217, 120, 0.1);
+}
+
+.portal-item.missed {
+  border-color: rgba(234, 98, 95, 0.45);
+  background: rgba(234, 98, 95, 0.1);
+}
+
+.portal-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.item-status {
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.item-status.done {
+  border-color: rgba(88, 217, 120, 0.6);
+  color: #58d978;
+}
+
+.item-status.missed {
+  border-color: rgba(234, 98, 95, 0.6);
+  color: #ea625f;
+}
+
+.item-status.pending {
+  border-color: rgba(172, 182, 200, 0.6);
+  color: rgba(216, 223, 237, 0.88);
+}
+
+.item-status-form {
+  display: grid;
+  gap: 8px;
+}
+
+.item-status-note {
+  font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.75);
 }
 
@@ -995,6 +1141,52 @@ h3 {
 .comment-list p {
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.75);
+}
+
+.chat-panel {
+  margin-top: 20px;
+}
+
+.chat-list {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.chat-message {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-message.is-own {
+  border-color: rgba(74, 241, 173, 0.35);
+  background: rgba(74, 241, 173, 0.12);
+}
+
+.chat-author {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-time {
+  font-size: 0.64rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.chat-empty {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.58);
 }
 
 .news-grid {
@@ -1395,14 +1587,32 @@ h3 {
 }
 
 .plan-weeks-row {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(320px, 1fr);
-  gap: 18px;
-  overflow-x: auto;
-  padding-bottom: 16px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
+  display: block;
+  padding-bottom: 8px;
+}
+
+.plan-week-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.plan-week-tab {
+  border-radius: 999px;
+  border: 1px solid rgba(74, 241, 173, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--white);
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.plan-week-tab.is-active {
+  background: rgba(74, 241, 173, 0.2);
+  border-color: rgba(74, 241, 173, 0.45);
 }
 
 .plan-days-row {
@@ -1416,6 +1626,14 @@ h3 {
   scrollbar-width: thin;
 }
 
+.plan-week-block {
+  display: none;
+}
+
+.plan-week-block.is-active {
+  display: grid;
+}
+
 .plan-day-card {
   border-radius: 18px;
   border: 1px solid rgba(74, 241, 173, 0.16);
@@ -1424,6 +1642,16 @@ h3 {
   gap: 12px;
   padding: 14px;
   scroll-snap-align: start;
+}
+
+.plan-item-head {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr 0.7fr 1fr;
+  gap: 8px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .plan-day-head {
@@ -1624,6 +1852,92 @@ h3 {
   outline: none;
   border-color: rgba(74, 241, 173, 0.6);
   box-shadow: 0 0 0 3px rgba(74, 241, 173, 0.15);
+}
+
+.coach-progress-card {
+  border: 1px solid rgba(74, 241, 173, 0.18);
+  border-radius: 18px;
+  background: rgba(7, 18, 13, 0.65);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.coach-progress-card h4 {
+  margin: 0;
+}
+
+.coach-progress-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.coach-progress-tools select {
+  border-radius: 999px;
+  border: 1px solid rgba(74, 241, 173, 0.24);
+  background: rgba(6, 15, 11, 0.72);
+  color: var(--white);
+  padding: 7px 12px;
+  font-family: inherit;
+}
+
+.coach-progress-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.coach-progress-donut {
+  --done: 0;
+  --missed: 0;
+  --pending: 100;
+  width: 108px;
+  height: 108px;
+  border-radius: 999px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    #4bf1ad 0 calc(var(--done) * 1%),
+    #ef5a5a calc(var(--done) * 1%) calc((var(--done) + var(--missed)) * 1%),
+    rgba(154, 165, 186, 0.55) calc((var(--done) + var(--missed)) * 1%) 100%
+  );
+}
+
+.coach-progress-donut::before {
+  content: "";
+  position: absolute;
+  inset: 15px;
+  border-radius: 999px;
+  background: rgba(8, 18, 13, 0.96);
+}
+
+.coach-progress-donut span {
+  position: relative;
+  z-index: 1;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.coach-progress-kpis {
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+}
+
+.coach-progress-kpis .ok {
+  color: #4bf1ad;
+}
+
+.coach-progress-kpis .bad {
+  color: #ef5a5a;
+}
+
+.coach-progress-kpis .wait {
+  color: rgba(200, 209, 224, 0.85);
 }
 
 .admin-list {
@@ -1908,12 +2222,22 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .plan-item-head {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 4px;
+  }
+
   .plan-day-head {
     grid-template-columns: 1fr;
   }
 
-  .plan-weeks-row {
-    grid-auto-columns: minmax(300px, 90vw);
+  .week-chart-row {
+    grid-template-columns: 1fr;
+  }
+
+  .week-donut {
+    width: 84px;
+    height: 84px;
   }
 }
 
@@ -1996,8 +2320,13 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .plan-weeks-row {
-    grid-auto-columns: 92vw;
+  .plan-item-head {
+    display: none;
+  }
+
+  .coach-progress-content {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
