@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/styles.css?v=20260217-2">
   </head>
   <body class="admin-body">
     <div class="noise" aria-hidden="true"></div>
@@ -18,10 +18,12 @@
           <span class="brand-mark" aria-hidden="true"></span>
         </a>
         <nav class="nav-group nav-right">
-          <a href="/">Inicio</a>
+          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
+          <a href="/admin?admin_section=portal" data-admin-section-link="portal">Portal del alumno</a>
         </nav>
         <nav class="nav-group nav-compact" aria-label="Navegación">
-          <a href="/">Inicio</a>
+          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
+          <a href="/admin?admin_section=portal" data-admin-section-link="portal">Portal del alumno</a>
         </nav>
       </div>
     </header>
@@ -35,7 +37,7 @@
 
       <div class="container admin-section-tabs" id="admin_section_tabs">
         <button class="admin-section-tab is-active" type="button" data-admin-section="inicio">Inicio</button>
-        <button class="admin-section-tab" type="button" data-admin-section="alumnos">Alumnos</button>
+        <button class="admin-section-tab" type="button" data-admin-section="portal">Portal del alumno</button>
       </div>
 
       <div class="container admin-stack admin-section-panel" data-admin-section-panel="inicio">
@@ -185,7 +187,7 @@
         </div>
       </div>
 
-      <div class="container admin-stack admin-section-panel" data-admin-section-panel="alumnos" hidden>
+      <div class="container admin-stack admin-section-panel" data-admin-section-panel="portal" hidden>
         {{COACH_DASHBOARD}}
         {{PLAN_EDITOR}}
 
@@ -244,6 +246,6 @@
         </div>
       </div>
     </main>
-    <script src="/script.js"></script>
+    <script src="/script.js?v=20260217-2"></script>
   </body>
 </html>

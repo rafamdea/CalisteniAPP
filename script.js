@@ -180,87 +180,94 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    const buildRow = (week, day, rowIndex, values = {}) => {
-      const row = document.createElement("div");
-      row.className = "plan-item-row";
-      row.dataset.row = rowIndex;
-      row.innerHTML = `
-        <input data-field="exercise" name="week${week}_day${day}_item${rowIndex}_exercise" list="exercise-options" placeholder="Ejercicio">
-        <input data-field="sets" name="week${week}_day${day}_item${rowIndex}_sets" placeholder="Series">
-        <input data-field="reps" name="week${week}_day${day}_item${rowIndex}_reps" placeholder="Reps">
-        <input data-field="weight" name="week${week}_day${day}_item${rowIndex}_weight" placeholder="Peso">
-        <input data-field="rest" name="week${week}_day${day}_item${rowIndex}_rest" placeholder="Descanso">
-        <input data-field="notes" name="week${week}_day${day}_item${rowIndex}_notes" placeholder="Observaciones">
-        <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio" title="Quitar ejercicio">×</button>
-      `;
-      row.querySelector('[data-field="exercise"]').value = values.exercise || "";
-      row.querySelector('[data-field="sets"]').value = values.sets || "";
-      row.querySelector('[data-field="reps"]').value = values.reps || "";
-      row.querySelector('[data-field="weight"]').value = values.weight || "";
-      row.querySelector('[data-field="rest"]').value = values.rest || "";
-      row.querySelector('[data-field="notes"]').value = values.notes || "";
-      return row;
+    const itemToLine = (item = {}) => {
+      const parts = [
+        String(item.exercise || "").trim(),
+        String(item.sets || "").trim(),
+        String(item.reps || "").trim(),
+        String(item.weight || "").trim(),
+        String(item.rest || "").trim(),
+        String(item.notes || "").trim(),
+      ];
+      while (parts.length && !parts[parts.length - 1]) {
+        parts.pop();
+      }
+      return parts.length ? parts.join(" | ") : "";
+    };
+
+    const itemsToText = (items) => {
+      if (!Array.isArray(items)) {
+        return "";
+      }
+      return items
+        .map((item) => itemToLine(item))
+        .filter((line) => line)
+        .join("\n");
+    };
+
+    const parseDayItemsText = (text) => {
+      return String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line)
+        .map((line) => {
+          const parts = line.split("|").map((chunk) => chunk.trim());
+          while (parts.length < 6) {
+            parts.push("");
+          }
+          const [exercise, sets, reps, weight, rest, notes] = parts;
+          if (!exercise) {
+            return null;
+          }
+          return {
+            exercise,
+            sets,
+            reps,
+            weight,
+            rest,
+            notes,
+          };
+        })
+        .filter((item) => item);
     };
 
     const updateRestState = (dayCard) => {
       const restToggle = dayCard.querySelector('[data-field="day-rest"]');
       const isRest = restToggle ? restToggle.checked : false;
       dayCard.classList.toggle("is-rest", isRest);
-      dayCard.querySelectorAll(".plan-items input").forEach((input) => {
-        input.disabled = isRest;
-      });
-      dayCard.querySelectorAll(".plan-item-remove").forEach((btn) => {
-        btn.disabled = isRest;
-      });
-      const addButton = dayCard.querySelector(".plan-item-add");
-      if (addButton) {
-        addButton.disabled = isRest;
+      const dayEditor = dayCard.querySelector('[data-field="day-text"]');
+      if (dayEditor) {
+        dayEditor.disabled = isRest;
       }
     };
 
     const extractDayData = (dayCard) => {
       const titleInput = dayCard.querySelector('[data-field="day-title"]');
       const restToggle = dayCard.querySelector('[data-field="day-rest"]');
-      const items = Array.from(dayCard.querySelectorAll(".plan-item-row")).map((row) => {
-        const value = (field) =>
-          (row.querySelector(`[data-field="${field}"]`) || {}).value || "";
-        return {
-          exercise: value("exercise").trim(),
-          sets: value("sets").trim(),
-          reps: value("reps").trim(),
-          weight: value("weight").trim(),
-          rest: value("rest").trim(),
-          notes: value("notes").trim(),
-        };
-      });
+      const dayEditor = dayCard.querySelector('[data-field="day-text"]');
+      const textValue = dayEditor ? dayEditor.value : "";
       return {
         title: titleInput ? titleInput.value.trim() : "",
         rest: restToggle ? restToggle.checked : false,
-        items: items.filter(
-          (item) =>
-            item.exercise || item.sets || item.reps || item.weight || item.rest || item.notes
-        ),
+        items: parseDayItemsText(textValue),
       };
     };
 
     const applyDayData = (dayCard, data) => {
-      const week = Number(dayCard.dataset.week || 0);
-      const day = Number(dayCard.dataset.day || 0);
       const titleInput = dayCard.querySelector('[data-field="day-title"]');
       const restToggle = dayCard.querySelector('[data-field="day-rest"]');
-      const itemsContainer = dayCard.querySelector(".plan-items");
+      const dayEditor = dayCard.querySelector('[data-field="day-text"]');
       if (titleInput) {
         titleInput.value = data.title || "";
       }
       if (restToggle) {
         restToggle.checked = Boolean(data.rest);
       }
-      if (itemsContainer) {
-        itemsContainer.innerHTML = "";
-        const items = Array.isArray(data.items) ? data.items : [];
-        const rowsNeeded = Math.max(items.length + 1, 1);
-        for (let i = 0; i < rowsNeeded; i += 1) {
-          itemsContainer.appendChild(buildRow(week, day, i + 1, items[i] || {}));
+      if (dayEditor) {
+        if (typeof data.text === "string" && data.text.trim()) {
+          dayEditor.value = data.text;
+        } else {
+          dayEditor.value = itemsToText(data.items);
         }
       }
       updateRestState(dayCard);
@@ -299,16 +306,20 @@ document.addEventListener("DOMContentLoaded", () => {
       days: Array.from({ length: 7 }, (_, idx) => emptyDayData(idx + 1)),
     });
 
-    const activateWeekTab = (weekNumber) => {
+    const activateWeekTab = (weekNumber, scrollToWeek = false) => {
       const selected = Number(weekNumber || 1);
-      planEditor.querySelectorAll(".plan-week-tab").forEach((tab) => {
-        const current = Number(tab.dataset.week || 0);
-        tab.classList.toggle("is-active", current === selected);
-      });
       planEditor.querySelectorAll(".plan-week-block").forEach((block) => {
         const current = Number(block.dataset.week || 0);
         block.classList.toggle("is-active", current === selected);
       });
+      if (scrollToWeek) {
+        const selectedBlock = planEditor.querySelector(
+          `.plan-week-block[data-week="${selected}"]`
+        );
+        if (selectedBlock) {
+          selectedBlock.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
     };
 
     const renderCoachProgress = (username, weekNumber) => {
@@ -408,10 +419,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!userPlan) {
         return;
       }
-      const activeTabNode = planEditor.querySelector(".plan-week-tab.is-active");
-      const activeTab =
+      const activeWeekNode = planEditor.querySelector(".plan-week-block.is-active");
+      const activeWeek =
         Number(
-          activeTabNode && activeTabNode.dataset ? activeTabNode.dataset.week : 1
+          activeWeekNode && activeWeekNode.dataset ? activeWeekNode.dataset.week : 1
         ) || 1;
       const planTitle = planEditor.querySelector("#plan_title");
       if (planTitle) {
@@ -424,7 +435,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applyWeekData(block, (userPlan.weeks && userPlan.weeks[idx]) || {});
       });
       setCurrentUser(username);
-      activateWeekTab(activeTab);
+      activateWeekTab(activeWeek);
       const weekSelect = document.getElementById("coach_progress_week");
       renderCoachProgress(username, weekSelect ? Number(weekSelect.value || 1) : 1);
       renderCoachChat(username);
@@ -432,12 +443,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     planEditor.querySelectorAll(".plan-day-card").forEach(updateRestState);
     activateWeekTab(1);
-    planEditor.querySelectorAll(".plan-week-tab").forEach((tab) => {
-      tab.addEventListener("click", (event) => {
-        event.preventDefault();
-        activateWeekTab(Number(tab.dataset.week || 1));
-      });
-    });
     const initialUser =
       (planEditor.querySelector('input[name="username"]') || {}).value || "";
     renderCoachProgress(initialUser, 1);
@@ -460,36 +465,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     planEditor.addEventListener("click", (event) => {
-      const addButton = event.target.closest(".plan-item-add");
-      if (addButton) {
-        event.preventDefault();
-        const dayCard = addButton.closest(".plan-day-card");
-        if (!dayCard) return;
-        const week = Number(dayCard.dataset.week || 0);
-        const day = Number(dayCard.dataset.day || 0);
-        const itemsContainer = dayCard.querySelector(".plan-items");
-        if (!itemsContainer) return;
-        const rows = itemsContainer.querySelectorAll(".plan-item-row");
-        const lastIndex = rows.length
-          ? Number(rows[rows.length - 1].dataset.row || rows.length)
-          : 0;
-        itemsContainer.appendChild(buildRow(week, day, lastIndex + 1, {}));
-        return;
-      }
-
-      const removeButton = event.target.closest(".plan-item-remove");
-      if (removeButton) {
-        event.preventDefault();
-        const row = removeButton.closest(".plan-item-row");
-        const container = removeButton.closest(".plan-items");
-        if (row && container) {
-          if (container.querySelectorAll(".plan-item-row").length > 1) {
-            row.remove();
-          }
-        }
-        return;
-      }
-
       const moveDayButton = event.target.closest(".plan-day-move");
       if (moveDayButton) {
         event.preventDefault();
@@ -605,7 +580,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetBlock) {
           applyWeekData(targetBlock, weekData);
-          activateWeekTab(targetWeek);
+          activateWeekTab(targetWeek, true);
         }
       });
     }
@@ -662,7 +637,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetDayCard) {
           applyDayData(targetDayCard, dayData);
-          activateWeekTab(targetWeek);
+          activateWeekTab(targetWeek, true);
         }
       });
     }
@@ -706,7 +681,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const sourceData = extractDayData(sourceCard);
         applyDayData(targetCard, sourceData);
         applyDayData(sourceCard, emptyDayData(sourceDay));
-        activateWeekTab(targetWeek);
+        activateWeekTab(targetWeek, true);
       });
     }
 
@@ -732,7 +707,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         if (targetCard) {
           applyDayData(targetCard, emptyDayData(targetDay));
-          activateWeekTab(targetWeek);
+          activateWeekTab(targetWeek, true);
         }
       });
     }
@@ -771,6 +746,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const tabPanels = Array.from(
       document.querySelectorAll("[data-admin-section-panel]")
     );
+    const navSectionLinks = Array.from(
+      document.querySelectorAll("[data-admin-section-link]")
+    );
     const hasSection = (value) =>
       tabButtons.some((button) => button.dataset.adminSection === value);
     const currentUrl = new URL(window.location.href);
@@ -782,7 +760,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentUrl.hash === "#plan" ||
       currentUrl.searchParams.has("plan_user")
     ) {
-      initialSection = "alumnos";
+      initialSection = "portal";
     }
     const activateSection = (section, syncUrl = true) => {
       if (!hasSection(section)) {
@@ -795,6 +773,10 @@ document.addEventListener("DOMContentLoaded", () => {
       tabPanels.forEach((panel) => {
         panel.hidden = panel.dataset.adminSectionPanel !== section;
       });
+      navSectionLinks.forEach((link) => {
+        const isActive = link.dataset.adminSectionLink === section;
+        link.classList.toggle("is-active", isActive);
+      });
       if (syncUrl) {
         const nextUrl = new URL(window.location.href);
         nextUrl.searchParams.set("admin_section", section);
@@ -804,6 +786,16 @@ document.addEventListener("DOMContentLoaded", () => {
     tabButtons.forEach((button) => {
       button.addEventListener("click", () => {
         activateSection(button.dataset.adminSection || "inicio");
+      });
+    });
+    navSectionLinks.forEach((link) => {
+      link.addEventListener("click", (event) => {
+        const section = link.dataset.adminSectionLink || "";
+        if (!hasSection(section)) {
+          return;
+        }
+        event.preventDefault();
+        activateSection(section);
       });
     });
     activateSection(initialSection, false);

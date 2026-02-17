@@ -962,7 +962,9 @@ def render_application_list(applications: list[dict]) -> str:
         approved = bool(app.get("approved"))
         status = "Activo" if approved else "Pendiente"
         actions = []
-        plan_href = f"/admin?plan_user={urllib.parse.quote(raw_username)}#plan"
+        plan_href = (
+            f"/admin?admin_section=portal&plan_user={urllib.parse.quote(raw_username)}#plan"
+        )
         actions.append(f'<a class="btn glass primary small" href="{plan_href}">Ver alumno</a>')
         if not approved:
             actions.append(
@@ -1250,7 +1252,14 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
         f"    <span>{storage_detail}</span>",
     ]
     if storage_mode == "db_error" and storage_debug:
-        storage_lines.append(f'    <span class="storage-pill-debug">{storage_debug}</span>')
+        storage_lines.extend(
+            [
+                '    <details class="storage-pill-debug">',
+                "      <summary>Ver detalle técnico</summary>",
+                f"      <pre>{storage_debug}</pre>",
+                "    </details>",
+            ]
+        )
     storage_lines.append("  </div>")
     storage_html = "\n".join(storage_lines)
     return "\n".join(
@@ -2027,7 +2036,9 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
     for app in applications:
         username = app.get("username", "")
         label = html.escape(username)
-        href = f"/admin?plan_user={urllib.parse.quote(username)}#plan"
+        href = (
+            f"/admin?admin_section=portal&plan_user={urllib.parse.quote(username)}#plan"
+        )
         selector_items.append(f'<a class="glass-pill" href="{href}">{label}</a>')
     selector_html = (
         f'<div class="user-selector"><span>Selecciona alumno:</span>{"".join(selector_items)}</div>'
@@ -2059,42 +2070,6 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
     progress_json = json.dumps(progress_data, ensure_ascii=True).replace("</", "<\\/")
     chat_json = json.dumps(chat_data, ensure_ascii=True).replace("</", "<\\/")
 
-    exercise_options = [
-        "Dominadas",
-        "Muscle up",
-        "Pino",
-        "Flexiones",
-        "Fondos",
-        "Front lever",
-        "Back lever",
-        "Plancha",
-        "Core",
-        "Movilidad",
-        "Running",
-    ]
-    datalist_html = "\n".join([f"<option value=\"{html.escape(opt)}\"></option>" for opt in exercise_options])
-
-    def render_item_row(week_index: int, day_index: int, row_index: int, item: dict) -> str:
-        exercise = html.escape(item.get("exercise", "")) if item else ""
-        sets = html.escape(item.get("sets", "")) if item else ""
-        reps = html.escape(item.get("reps", "")) if item else ""
-        weight = html.escape(item.get("weight", "")) if item else ""
-        rest = html.escape(item.get("rest", "")) if item else ""
-        notes = html.escape(item.get("notes", "")) if item else ""
-        return "\n".join(
-            [
-                f'<div class="plan-item-row" data-row="{row_index}">',
-                f'  <input data-field="exercise" name="week{week_index}_day{day_index}_item{row_index}_exercise" list="exercise-options" placeholder="Ejercicio" value="{exercise}">',
-                f'  <input data-field="sets" name="week{week_index}_day{day_index}_item{row_index}_sets" placeholder="Series" value="{sets}">',
-                f'  <input data-field="reps" name="week{week_index}_day{day_index}_item{row_index}_reps" placeholder="Reps" value="{reps}">',
-                f'  <input data-field="weight" name="week{week_index}_day{day_index}_item{row_index}_weight" placeholder="Peso" value="{weight}">',
-                f'  <input data-field="rest" name="week{week_index}_day{day_index}_item{row_index}_rest" placeholder="Descanso" value="{rest}">',
-                f'  <input data-field="notes" name="week{week_index}_day{day_index}_item{row_index}_notes" placeholder="Observaciones" value="{notes}">',
-                '  <button class="plan-item-remove" type="button" aria-label="Quitar ejercicio" title="Quitar ejercicio">×</button>',
-                "</div>",
-            ]
-        )
-
     week_blocks = []
     for week_index, week in enumerate(plan.get("weeks", []), start=1):
         week_title = html.escape(week.get("title", f"Semana {week_index}"))
@@ -2103,13 +2078,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             day_title = html.escape(day.get("title", ""))
             rest_flag = "checked" if day.get("rest") else ""
             card_class = "plan-day-card is-rest" if day.get("rest") else "plan-day-card"
-            items = day.get("items") if isinstance(day.get("items"), list) else []
-            min_rows = 1
-            row_count = max(len(items) + 1, min_rows)
-            rows = []
-            for row_index in range(1, row_count + 1):
-                item = items[row_index - 1] if row_index - 1 < len(items) else {}
-                rows.append(render_item_row(week_index, day_index, row_index, item))
+            day_text = html.escape(plan_day_to_text(day))
             day_cards.append(
                 "\n".join(
                     [
@@ -2126,14 +2095,11 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                         '      <button type="button" class="plan-day-clear" aria-label="Vaciar día" title="Vaciar día">🧹</button>',
                         "    </div>",
                         "  </div>",
-                        '  <div class="plan-item-table">',
-                        '    <div class="plan-item-head"><span>Ejercicio</span><span>Series</span><span>Reps</span><span>Peso</span><span>Descanso</span><span>Notas</span><span></span></div>',
-                        '    <div class="plan-items">',
-                        "\n".join(rows),
-                        "    </div>",
+                        '  <div class="plan-day-editor-wrap">',
+                        '    <p class="plan-day-help">Una línea por ejercicio: Ejercicio | Series | Reps | Peso | Descanso | Notas</p>',
+                        f'    <textarea class="plan-day-editor" data-field="day-text" name="week{week_index}_day{day_index}_text" rows="8" placeholder="Dominadas | 4 | 8 | 20kg | 90s | Técnica estricta">{day_text}</textarea>',
                         "  </div>",
                         '  <p class="plan-rest-note">Descanso / movilidad</p>',
-                        '  <button class="btn glass ghost small plan-item-add" type="button">Añadir ejercicio</button>',
                         "</div>",
                     ]
                 )
@@ -2141,7 +2107,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
         week_blocks.append(
             "\n".join(
                 [
-                    f'<div class="plan-week-block{" is-active" if week_index == 1 else ""}" data-week="{week_index}">',
+                    f'<div class="plan-week-block" data-week="{week_index}">',
                     '  <div class="plan-week-head">',
                     f'    <div class="plan-week-title-field"><label for="week{week_index}_title">Semana {week_index} - título</label>',
                     f'    <input id="week{week_index}_title" name="week{week_index}_title" type="text" value="{week_title}"></div>',
@@ -2159,20 +2125,6 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
                 ]
             )
         )
-
-    week_tabs_html = (
-        '<div class="plan-week-tabs">'
-        + "".join(
-            [
-                (
-                    f'<button type="button" class="plan-week-tab{" is-active" if i == 1 else ""}" '
-                    f'data-week="{i}">Semana {i}</button>'
-                )
-                for i in range(1, 5)
-            ]
-        )
-        + "</div>"
-    )
     progress_card_html = "\n".join(
         [
             '<div class="coach-progress-card">',
@@ -2224,6 +2176,8 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             '      <button type="button" class="btn glass ghost small" id="load_user_btn">Cargar</button>',
             "      <span class=\"plan-tool-note\">Guarda antes de cambiar para no perder cambios.</span>",
             "    </div>",
+            '    <details class="plan-tools-advanced">',
+            "      <summary>Herramientas avanzadas (copiar y mover)</summary>",
             "    <div class=\"plan-tool-row\">",
             "      <label>Copiar semana:</label>",
             "      <select id=\"copy_plan_user\">"
@@ -2300,6 +2254,7 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             '      <button type="button" class="btn glass ghost small" id="move_day_btn">Mover</button>',
             '      <button type="button" class="btn glass ghost small" id="clear_day_btn">Vaciar destino</button>',
             "    </div>",
+            "    </details>",
             "  </div>",
             "  <form class=\"admin-form\" action=\"/admin/plan/update\" method=\"post\">",
             f"    <input type=\"hidden\" name=\"username\" value=\"{html.escape(selected_user)}\">",
@@ -2307,14 +2262,12 @@ def render_plan_editor(applications: list[dict], selected_user: str) -> str:
             "      <label for=\"plan_title\">Título del plan</label>",
             f"      <input id=\"plan_title\" name=\"plan_title\" type=\"text\" value=\"{html.escape(plan.get('title', 'Plan de entrenamiento'))}\">",
             "    </div>",
-            week_tabs_html,
             '    <div class="plan-weeks-row">',
             "\n".join(week_blocks),
             "    </div>",
             "    <button class=\"btn glass primary\" type=\"submit\">Guardar plan</button>",
             "  </form>",
             chat_panel_html,
-            f'  <datalist id="exercise-options">{datalist_html}</datalist>',
             f'  <script type="application/json" id="plan-data">{plan_json}</script>',
             f'  <script type="application/json" id="plan-progress-data">{progress_json}</script>',
             f'  <script type="application/json" id="coach-chat-data">{chat_json}</script>',
@@ -2531,7 +2484,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"styles.css\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260217-2\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3682,7 +3635,11 @@ class AuraHandler(SimpleHTTPRequestHandler):
                 rest_flag = f"{day_key}_rest" in data
                 day = plan["weeks"][week_index]["days"][day_index]
                 old_items = day.get("items", []) if isinstance(day.get("items"), list) else []
-                items = parse_plan_items_from_form(data, week_index + 1, day_index + 1)
+                day_text_key = f"{day_key}_text"
+                if day_text_key in data:
+                    items = parse_day_items(data.get(day_text_key, ""))
+                else:
+                    items = parse_plan_items_from_form(data, week_index + 1, day_index + 1)
                 for item_pos, parsed_item in enumerate(items):
                     if item_pos >= len(old_items):
                         continue
@@ -3698,7 +3655,9 @@ class AuraHandler(SimpleHTTPRequestHandler):
         app["plan"] = plan
         save_json(APPLICATIONS_PATH, applications)
         plan_param = urllib.parse.quote(username)
-        self.redirect(f"/admin?status=plan_saved&plan_user={plan_param}#plan")
+        self.redirect(
+            f"/admin?admin_section=portal&status=plan_saved&plan_user={plan_param}#plan"
+        )
 
     def handle_day_update(self) -> None:
         cookie_header = self.headers.get("Cookie")
@@ -3860,7 +3819,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
         )
         save_json(CHATS_PATH, chats)
         plan_param = urllib.parse.quote(app.get("username", username))
-        self.redirect(f"/admin?plan_user={plan_param}#plan")
+        self.redirect(f"/admin?admin_section=portal&plan_user={plan_param}#plan")
 
     def handle_submission_add(self) -> None:
         cookie_header = self.headers.get("Cookie")
