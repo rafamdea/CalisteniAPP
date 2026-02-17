@@ -3280,13 +3280,15 @@ class AuraHandler(SimpleHTTPRequestHandler):
         self.admin_redirect("app_deleted")
 
 
-def run_server(port: int | None = None) -> None:
+def run_server(port: int | None = None, host: str | None = None) -> None:
     ensure_data_files()
     if port is None:
         port = int(os.environ.get("PORT", "8000"))
-    server_address = ("", port)
+    if host is None:
+        host = os.environ.get("HOST", "0.0.0.0")
+    server_address = (host, port)
     httpd = ThreadingHTTPServer(server_address, AuraHandler)
-    print(f"Serving on http://localhost:{port}")
+    print(f"Serving on http://{host}:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
