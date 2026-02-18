@@ -447,28 +447,45 @@ def db_save_json(path: Path, data) -> None:
             )
 
 
-def data_key_exists(path: Path) -> bool:
-    if db_enabled():
-        try:
-            return db_has_key(path)
-        except Exception as exc:
-            remember_db_error(exc)
-            return path.exists()
-    return path.exists()
+def db_seed_json(path: Path, data) -> None:
+    key = db_key_for_path(path)
+    payload = json.dumps(data, ensure_ascii=True)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE} (key, value, updated_at)
+                VALUES (%s, %s::jsonb, NOW())
+                ON CONFLICT (key)
+                DO NOTHING
+                """,
+                (key, payload),
+            )
+
+
+def save_json_local(path: Path, data) -> None:
+    with DATA_LOCK:
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=True)
 
 
 def seed_json_key(path: Path, default) -> None:
-    if data_key_exists(path):
-        return
-    if db_enabled() and path.exists():
+    if db_enabled():
+        payload = default
         try:
-            with path.open("r", encoding="utf-8") as handle:
-                file_data = json.load(handle)
-            save_json(path, file_data)
-            return
+            if path.exists():
+                with path.open("r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
         except Exception:
-            pass
-    save_json(path, default)
+            payload = default
+        try:
+            db_seed_json(path, payload)
+            return
+        except Exception as exc:
+            remember_db_error(exc)
+    if path.exists():
+        return
+    save_json_local(path, default)
 
 
 def load_json(path: Path, default):
@@ -494,9 +511,7 @@ def save_json(path: Path, data) -> None:
             return
         except Exception as exc:
             remember_db_error(exc)
-    with DATA_LOCK:
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=True)
+    save_json_local(path, data)
 
 
 def parse_bool_env(value: str | None, default_value: bool) -> bool:
@@ -875,6 +890,8 @@ def consume_password_reset_token(token: str) -> dict | None:
 
 def create_session(username: str, role: str) -> str:
     sessions = load_json(SESSIONS_PATH, {})
+    if not isinstance(sessions, dict):
+        sessions = {}
     sessions = clean_sessions(sessions)
     token = secrets.token_urlsafe(32)
     sessions[token] = {"user": username, "role": role, "expires": time.time() + SESSION_TTL}
@@ -884,6 +901,8 @@ def create_session(username: str, role: str) -> str:
 
 def delete_session(token: str) -> None:
     sessions = load_json(SESSIONS_PATH, {})
+    if not isinstance(sessions, dict):
+        sessions = {}
     if token in sessions:
         sessions.pop(token, None)
         save_json(SESSIONS_PATH, sessions)
@@ -900,9 +919,12 @@ def get_session_user(cookie_header: str | None, cookie_name: str, role: str | No
     token = cookies.get(cookie_name)
     if not token:
         return None
-    sessions = load_json(SESSIONS_PATH, {})
-    sessions = clean_sessions(sessions)
-    save_json(SESSIONS_PATH, sessions)
+    raw_sessions = load_json(SESSIONS_PATH, {})
+    if not isinstance(raw_sessions, dict):
+        raw_sessions = {}
+    sessions = clean_sessions(raw_sessions)
+    if sessions != raw_sessions:
+        save_json(SESSIONS_PATH, sessions)
     data = sessions.get(token)
     if not data:
         return None
@@ -1771,7 +1793,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-2\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-3\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2721,7 +2743,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-2\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-3\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3463,12 +3485,17 @@ class AuraHandler(SimpleHTTPRequestHandler):
             self.redirect("/admin?access=admin_error")
             return
 
+        cookie_header = self.headers.get("Cookie")
+        old_user_token = get_cookie_token(cookie_header, USER_SESSION_COOKIE)
+        if old_user_token:
+            delete_session(old_user_token)
         token = create_session(username, "admin")
         self.send_response(HTTPStatus.SEE_OTHER)
         self.send_header(
             "Set-Cookie",
             f"{ADMIN_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax",
         )
+        self.send_header("Set-Cookie", f"{USER_SESSION_COOKIE}=deleted; Path=/; Max-Age=0")
         self.send_header("Location", "/admin")
         self.end_headers()
 
@@ -3498,12 +3525,17 @@ class AuraHandler(SimpleHTTPRequestHandler):
         admin = settings.get("admin", {})
         if username == admin.get("username"):
             if verify_password(password, admin.get("salt", ""), admin.get("hash", "")):
+                cookie_header = self.headers.get("Cookie")
+                old_user_token = get_cookie_token(cookie_header, USER_SESSION_COOKIE)
+                if old_user_token:
+                    delete_session(old_user_token)
                 token = create_session(username, "admin")
                 self.send_response(HTTPStatus.SEE_OTHER)
                 self.send_header(
                     "Set-Cookie",
                     f"{ADMIN_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax",
                 )
+                self.send_header("Set-Cookie", f"{USER_SESSION_COOKIE}=deleted; Path=/; Max-Age=0")
                 self.send_header("Location", "/admin")
                 self.end_headers()
                 return
@@ -3531,12 +3563,17 @@ class AuraHandler(SimpleHTTPRequestHandler):
             self.redirect(f"{target}{suffix}")
             return
 
+        cookie_header = self.headers.get("Cookie")
+        old_admin_token = get_cookie_token(cookie_header, ADMIN_SESSION_COOKIE)
+        if old_admin_token:
+            delete_session(old_admin_token)
         token = create_session(username, "user")
         self.send_response(HTTPStatus.SEE_OTHER)
         self.send_header(
             "Set-Cookie",
             f"{USER_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax",
         )
+        self.send_header("Set-Cookie", f"{ADMIN_SESSION_COOKIE}=deleted; Path=/; Max-Age=0")
         self.send_header("Location", "/portal")
         self.end_headers()
 

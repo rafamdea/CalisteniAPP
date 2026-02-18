@@ -114,6 +114,32 @@ document.addEventListener("DOMContentLoaded", () => {
     video.addEventListener("loadedmetadata", enforce);
   };
 
+  const prefersReducedMotion =
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const safePlayVideo = (video) => {
+    if (prefersReducedMotion) {
+      return;
+    }
+    const playPromise = video.play();
+    if (playPromise && playPromise.catch) {
+      playPromise.catch(() => {});
+    }
+  };
+
+  const pauseVideo = (video) => {
+    if (!video.paused) {
+      video.pause();
+    }
+    video.dataset.inViewport = "false";
+    const wrapper =
+      video.closest(".video-thumb") || video.closest(".progression-media");
+    if (wrapper) {
+      wrapper.classList.remove("is-looping");
+    }
+  };
+
   const setupLoopIndicator = (video) => {
     const wrapper =
       video.closest(".video-thumb") || video.closest(".progression-media");
@@ -126,10 +152,10 @@ document.addEventListener("DOMContentLoaded", () => {
       wrapper.appendChild(indicator);
     }
     const safePlay = () => {
-      const playPromise = video.play();
-      if (playPromise && playPromise.catch) {
-        playPromise.catch(() => {});
+      if (video.dataset.inViewport !== "true") {
+        return;
       }
+      safePlayVideo(video);
     };
     video.loop = false;
     video.removeAttribute("loop");
@@ -145,10 +171,35 @@ document.addEventListener("DOMContentLoaded", () => {
     video.addEventListener("play", clearIndicator);
   };
 
-  document.querySelectorAll("video").forEach((video) => {
+  const allVideos = Array.from(document.querySelectorAll("video"));
+  allVideos.forEach((video) => {
     lockMute(video);
     setupLoopIndicator(video);
+    video.dataset.inViewport = "false";
+    pauseVideo(video);
   });
+
+  if (!prefersReducedMotion && allVideos.length) {
+    const videoObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const video = entry.target;
+          const isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.25;
+          if (isVisible) {
+            video.dataset.inViewport = "true";
+            safePlayVideo(video);
+          } else {
+            pauseVideo(video);
+          }
+        });
+      },
+      {
+        threshold: [0, 0.25, 0.5],
+        rootMargin: "120px 0px 120px 0px",
+      }
+    );
+    allVideos.forEach((video) => videoObserver.observe(video));
+  }
 
   const planEditor = document.querySelector(".plan-editor");
   if (planEditor) {
