@@ -249,6 +249,9 @@ DEFAULT_TRAINING_PLAN = {
     ],
 }
 
+SPONSOR_PULLUP_URL = "https://pullup-dip.com/?ref=pullup-dip.com%3Fref%3Drafamdea&utm_source=influenzer"
+SPONSOR_ZUMUB_URL = "https://www.zumub.com/ES/"
+
 DEFAULT_CONTENT = {
     "hero": {
         "eyebrow": "Entrenamiento gratuito · 4 semanas",
@@ -311,8 +314,16 @@ DEFAULT_CONTENT = {
         "instagram": "@rafamdea",
     },
     "sponsors": [
-        {"name": "VITASTRONG ESPAÑA", "logo": "LOGOS/vitastrong.jpeg"},
-        {"name": "PULLUP&DIP", "logo": "LOGOS/pullupanddip.png"},
+        {
+            "name": "PULLUP&DIP",
+            "logo": "LOGOS/pullupanddip.png",
+            "url": SPONSOR_PULLUP_URL,
+        },
+        {
+            "name": "ZUMUB",
+            "logo": "LOGOS/zumub.png",
+            "url": SPONSOR_ZUMUB_URL,
+        },
     ],
 }
 
@@ -627,13 +638,34 @@ def normalize_content(content: dict | None) -> dict:
     sponsors = content.get("sponsors")
     if isinstance(sponsors, list):
         cleaned = []
+        had_vitastrong = False
         for sponsor in sponsors:
             if not isinstance(sponsor, dict):
                 continue
             name = str(sponsor.get("name", "")).strip()
             logo = str(sponsor.get("logo", "")).strip()
+            url = str(sponsor.get("url", "")).strip()
+            name_key = name.lower().replace(" ", "")
+            if "vitastrong" in name.lower():
+                had_vitastrong = True
+                continue
+            if name_key in {"pullup&dip", "pullupdip"} and not url:
+                url = SPONSOR_PULLUP_URL
+            elif name_key == "zumub" and not url:
+                url = SPONSOR_ZUMUB_URL
             if name and logo:
-                cleaned.append({"name": name, "logo": logo})
+                entry = {"name": name, "logo": logo}
+                if url:
+                    entry["url"] = url
+                cleaned.append(entry)
+        if had_vitastrong:
+            has_pullup = any(
+                str(item.get("name", "")).strip().lower().replace(" ", "") in {"pullup&dip", "pullupdip"}
+                for item in cleaned
+            )
+            has_zumub = any(str(item.get("name", "")).strip().lower().replace(" ", "") == "zumub" for item in cleaned)
+            if has_pullup and not has_zumub:
+                cleaned.append({"name": "ZUMUB", "logo": "LOGOS/zumub.png", "url": SPONSOR_ZUMUB_URL})
         if cleaned:
             default["sponsors"] = cleaned
 
@@ -1793,7 +1825,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-3\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-4\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2212,15 +2244,25 @@ def render_sponsors(sponsors: list[dict]) -> str:
     for sponsor in sponsors:
         name = html.escape(str(sponsor.get("name", "")))
         logo = html.escape(str(sponsor.get("logo", "")))
+        url = html.escape(str(sponsor.get("url", "")).strip())
         if not name or not logo:
             continue
+        open_tag = '<div class="sponsor-tile glass-card stagger-item">'
+        close_tag = "</div>"
+        if url:
+            open_tag = (
+                f'<a class="sponsor-tile sponsor-link glass-card stagger-item" href="{url}" '
+                'target="_blank" rel="noopener noreferrer">'
+            )
+            close_tag = "</a>"
         cards.append(
             "\n".join(
                 [
-                    '<div class="sponsor-tile glass-card stagger-item">',
+                    open_tag,
                     f"  <img class=\"sponsor-logo\" src=\"{logo}\" alt=\"{name}\">",
                     f"  <span class=\"sponsor-name\">{name}</span>",
-                    "</div>",
+                    "  <p class=\"sponsor-offer\">10% de descuento con el código <strong>FITA10</strong></p>",
+                    close_tag,
                 ]
             )
         )
@@ -2555,7 +2597,14 @@ def render_content_form(content: dict) -> str:
     bio_paragraphs = "\n".join([str(p) for p in bio.get("paragraphs", [])])
     program_bullets = "\n".join([str(b) for b in program.get("bullets", [])])
     sponsors_text = "\n".join(
-        [f"{sponsor.get('name','')} | {sponsor.get('logo','')}" for sponsor in content.get("sponsors", [])]
+        [
+            (
+                f"{sponsor.get('name','')} | {sponsor.get('logo','')} | {sponsor.get('url','')}"
+                if str(sponsor.get("url", "")).strip()
+                else f"{sponsor.get('name','')} | {sponsor.get('logo','')}"
+            )
+            for sponsor in content.get("sponsors", [])
+        ]
     )
 
     return "\n".join(
@@ -2694,7 +2743,7 @@ def render_content_form(content: dict) -> str:
             '    <div class="form-section">',
             "      <h4>Patrocinadores</h4>",
             '      <div class="form-field">',
-            "        <label for=\"sponsors\">Lista (nombre | ruta-logo)</label>",
+            "        <label for=\"sponsors\">Lista (nombre | ruta-logo | enlace-opcional)</label>",
             f"        <textarea id=\"sponsors\" name=\"sponsors\" rows=\"3\">{html.escape(sponsors_text)}</textarea>",
             "      </div>",
             "    </div>",
@@ -2743,7 +2792,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-3\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-4\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2904,6 +2953,23 @@ def parse_pair_lines(text: str) -> list[tuple[str, str]]:
             continue
         pairs.append((parts[0], parts[1]))
     return pairs
+
+
+def parse_sponsor_lines(text: str) -> list[dict]:
+    sponsors = []
+    for line in parse_lines(text):
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) < 2:
+            continue
+        name, logo = parts[0], parts[1]
+        url = parts[2] if len(parts) > 2 else ""
+        if not name or not logo:
+            continue
+        sponsor = {"name": name, "logo": logo}
+        if url:
+            sponsor["url"] = url
+        sponsors.append(sponsor)
+    return sponsors
 
 
 def parse_day_items(text: str) -> list[dict]:
@@ -3892,9 +3958,9 @@ class AuraHandler(SimpleHTTPRequestHandler):
         content["contact"]["city"] = data.get("contact_city", "").strip()
         content["contact"]["instagram"] = data.get("contact_instagram", "").strip()
 
-        sponsor_pairs = parse_pair_lines(data.get("sponsors", ""))
-        if sponsor_pairs:
-            content["sponsors"] = [{"name": name, "logo": logo} for name, logo in sponsor_pairs]
+        sponsor_entries = parse_sponsor_lines(data.get("sponsors", ""))
+        if sponsor_entries:
+            content["sponsors"] = sponsor_entries
 
         save_json(CONTENT_PATH, content)
         self.admin_redirect("content_saved")
