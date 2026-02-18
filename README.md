@@ -8,15 +8,20 @@ Web con landing pública, panel admin y portal de alumnos.
 - `DATABASE_URL` = URL de conexión PostgreSQL de Neon.
 
 ### SMTP (correos de registro y recuperación)
-- `AURA_SMTP_ENABLED` = `true`
-- `AURA_SMTP_HOST` = `smtp.gmail.com`
-- `AURA_SMTP_PORT` = `587` (recomendado con Gmail)
-- `AURA_SMTP_USER` = tu correo Gmail completo
-- `AURA_SMTP_PASS` = contraseña de aplicación de Gmail
-- `AURA_SMTP_FROM` = nombre visible del remitente (ej: `Aura Calistenia`)
-- `AURA_SMTP_ADMIN` = correo donde quieres recibir las notificaciones admin
-- `AURA_SMTP_TLS` = `true`
-- `AURA_SMTP_SSL` = `false`
+- Mínimas (Gmail):
+  - `AURA_SMTP_USER` = tu correo Gmail completo
+  - `AURA_SMTP_PASS` = contraseña de aplicación de Gmail
+- Recomendadas:
+  - `AURA_SMTP_HOST` = `smtp.gmail.com`
+  - `AURA_SMTP_PORT` = `587`
+  - `AURA_SMTP_TLS` = `true`
+  - `AURA_SMTP_SSL` = `false`
+  - `AURA_SMTP_FROM` = nombre visible del remitente (ej: `Aura Calistenia`)
+  - `AURA_SMTP_ADMIN` = correo para notificaciones admin
+  - `AURA_SMTP_ENABLED` = `true` (si no la defines, se activa automáticamente si hay host+user+pass)
+
+Compatibilidad:
+- También acepta aliases: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_TLS`, `SMTP_SSL`, `SMTP_ENABLED`.
 
 Notas:
 - Si usas puerto `465`, pon `AURA_SMTP_SSL=true`.
@@ -28,6 +33,7 @@ En `Admin > Gestión de alumnos` aparece una tarjeta **Estado SMTP** con:
 - estado actual (listo / incompleto / error / desactivado),
 - host, puerto y seguridad,
 - detalle técnico del último error de envío.
+- botón `Probar SMTP` para enviar un email de prueba.
 
 ## Legal
 

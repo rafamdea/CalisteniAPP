@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=20260218-5">
+    <link rel="stylesheet" href="/styles.css?v=20260218-7">
   </head>
   <body>
     <div class="noise" aria-hidden="true"></div>
@@ -20,6 +20,7 @@
           <a href="#inicio">Inicio</a>
           <a href="#bio">Bio</a>
           <a href="#programa">Programa</a>
+          <a href="#contacto">Contacto</a>
         </nav>
         <a class="nav-brand" href="#inicio" aria-label="Aura Calistenia">
           <span class="brand-mark" aria-hidden="true"></span>
@@ -34,6 +35,7 @@
           <a href="#inicio">Inicio</a>
           <a href="#bio">Bio</a>
           <a href="#programa">Programa</a>
+          <a href="#contacto">Contacto</a>
           <a href="#galeria">Vídeos</a>
           <a href="#eventos">Eventos</a>
           <a href="/legal.html">Legal</a>
@@ -69,7 +71,7 @@
           </div>
           <div class="bio-portrait stagger-item">
             <div class="portrait-frame glass-card">
-              <img src="{{BIO_IMAGE}}" alt="Rafa Montero de Espinosa en acción">
+              <img src="{{BIO_IMAGE}}" alt="Rafa Montero de Espinosa en acción" loading="lazy" decoding="async">
             </div>
             <div class="portrait-caption">{{BIO_IMAGE_CAPTION}}</div>
           </div>
@@ -93,7 +95,7 @@
               </ul>
             </div>
             <div class="program-image glass-card stagger-item">
-              <img src="{{PROGRAM_IMAGE}}" alt="Rafa en pino libre">
+              <img src="{{PROGRAM_IMAGE}}" alt="Rafa en pino libre" loading="lazy" decoding="async">
               <span class="program-image-caption">{{PROGRAM_IMAGE_CAPTION}}</span>
             </div>
           </div>
@@ -101,7 +103,7 @@
           <div class="progression-grid" data-stagger>
             <article class="progression-card glass-card stagger-item">
               <div class="progression-media">
-                <video src="progresion-pino/progresion-1.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="progresion-pino/progresion-1.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="progression-meta">
                 <span class="progression-step">Progresión 1</span>
@@ -111,7 +113,7 @@
             </article>
             <article class="progression-card glass-card stagger-item">
               <div class="progression-media">
-                <video src="progresion-pino/progresion-2.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="progresion-pino/progresion-2.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="progression-meta">
                 <span class="progression-step">Progresión 2</span>
@@ -121,7 +123,7 @@
             </article>
             <article class="progression-card glass-card stagger-item">
               <div class="progression-media">
-                <video src="progresion-pino/progresion-3.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="progresion-pino/progresion-3.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="progression-meta">
                 <span class="progression-step">Progresión 3</span>
@@ -131,7 +133,7 @@
             </article>
             <article class="progression-card glass-card stagger-item">
               <div class="progression-media">
-                <video src="progresion-pino/progresion-4.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="progresion-pino/progresion-4.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="progression-meta">
                 <span class="progression-step">Progresión 4</span>
@@ -219,7 +221,7 @@
             <!-- FALLBACK_VIDEOS_START -->
             <div class="video-card tall stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/dominadas.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/dominadas.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Dominadas</span>
@@ -229,7 +231,7 @@
             </div>
             <div class="video-card wide stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/muscle-up.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/muscle-up.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Muscle up</span>
@@ -239,7 +241,7 @@
             </div>
             <div class="video-card stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/pino-video.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/pino-video.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Pino</span>
@@ -249,7 +251,7 @@
             </div>
             <div class="video-card tall stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/front-lever.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/front-lever.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Front lever</span>
@@ -259,7 +261,7 @@
             </div>
             <div class="video-card wide stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/fondos.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/fondos.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Fondos</span>
@@ -269,7 +271,7 @@
             </div>
             <div class="video-card stagger-item">
               <div class="video-thumb">
-                <video src="FOTOS/back-lever.mp4" autoplay loop muted playsinline preload="metadata"></video>
+                <video data-src="FOTOS/back-lever.mp4" autoplay loop muted playsinline preload="none"></video>
               </div>
               <div class="video-meta">
                 <span class="tag glass-pill">Back lever</span>
@@ -373,6 +375,6 @@
       </div>
     </footer>
 
-    <script src="/script.js?v=20260218-3"></script>
+    <script src="/script.js?v=20260218-5"></script>
   </body>
 </html>

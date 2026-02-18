@@ -369,9 +369,9 @@ def db_connect():
     if not db_enabled():
         return None
     if psycopg is not None:
-        return psycopg.connect(DATABASE_URL, autocommit=True)
+        return psycopg.connect(DATABASE_URL, autocommit=True, connect_timeout=5)
     if psycopg2 is not None:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
         conn.autocommit = True
         return conn
     raise RuntimeError("DATABASE_URL está definido pero no hay driver PostgreSQL instalado (psycopg/psycopg2).")
@@ -542,22 +542,83 @@ def parse_bool_env(value: str | None, default_value: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_first(*keys: str, default: str = "") -> str:
+    for key in keys:
+        raw = os.environ.get(key)
+        if raw is None:
+            continue
+        value = str(raw).strip()
+        if value:
+            return value
+    return default
+
+
+def parse_bool_env_keys(keys: list[str], default_value: bool) -> bool:
+    for key in keys:
+        raw = os.environ.get(key)
+        if raw is None or not str(raw).strip():
+            continue
+        return parse_bool_env(str(raw), default_value)
+    return default_value
+
+
 def smtp_defaults_from_env() -> dict:
-    port_raw = os.environ.get("AURA_SMTP_PORT", "").strip()
+    host = env_first("AURA_SMTP_HOST", "SMTP_HOST", "MAIL_HOST")
+    username = env_first("AURA_SMTP_USER", "SMTP_USER", "SMTP_USERNAME", "MAIL_USER", "MAIL_USERNAME")
+    password = env_first(
+        "AURA_SMTP_PASS",
+        "SMTP_PASS",
+        "SMTP_PASSWORD",
+        "MAIL_PASS",
+        "MAIL_PASSWORD",
+        "GMAIL_APP_PASSWORD",
+    )
+    from_name = env_first("AURA_SMTP_FROM", "SMTP_FROM", "MAIL_FROM", "MAIL_FROM_NAME", default="Aura Calistenia")
+    admin_email = env_first("AURA_SMTP_ADMIN", "SMTP_ADMIN", "MAIL_ADMIN")
+
+    tls_keys = ["AURA_SMTP_TLS", "SMTP_TLS", "MAIL_TLS"]
+    ssl_keys = ["AURA_SMTP_SSL", "SMTP_SSL", "MAIL_SSL"]
+    enabled_keys = ["AURA_SMTP_ENABLED", "SMTP_ENABLED", "MAIL_ENABLED"]
+
+    use_ssl = parse_bool_env_keys(ssl_keys, False)
+    use_tls = parse_bool_env_keys(tls_keys, not use_ssl)
+
+    port_raw = env_first("AURA_SMTP_PORT", "SMTP_PORT", "MAIL_PORT")
     try:
-        port = int(port_raw) if port_raw else 587
+        port = int(port_raw) if port_raw else (465 if use_ssl else 587)
     except ValueError:
-        port = 587
+        port = 465 if use_ssl else 587
+
+    if host and ":" in host and not host.startswith(("http://", "https://")):
+        host_part, port_part = host.rsplit(":", 1)
+        if host_part and port_part.isdigit():
+            host = host_part.strip()
+            port = int(port_part)
+
+    if not host and username.lower().endswith("@gmail.com"):
+        host = "smtp.gmail.com"
+    if username.lower().endswith("@gmail.com") and " " in password:
+        password = password.replace(" ", "")
+    if port == 465 and not use_ssl:
+        use_ssl = True
+        use_tls = False
+    if use_ssl and use_tls:
+        use_tls = False
+
+    explicit_enabled = parse_bool_env_keys(enabled_keys, False)
+    has_credentials = bool(host and username and password)
+    enabled = explicit_enabled or has_credentials
+
     return {
-        "enabled": parse_bool_env(os.environ.get("AURA_SMTP_ENABLED"), False),
-        "host": os.environ.get("AURA_SMTP_HOST", "").strip(),
+        "enabled": enabled,
+        "host": host,
         "port": port,
-        "username": os.environ.get("AURA_SMTP_USER", "").strip(),
-        "password": os.environ.get("AURA_SMTP_PASS", "").strip(),
-        "from_name": os.environ.get("AURA_SMTP_FROM", "").strip() or "Aura Calistenia",
-        "admin_email": os.environ.get("AURA_SMTP_ADMIN", "").strip(),
-        "use_tls": parse_bool_env(os.environ.get("AURA_SMTP_TLS"), True),
-        "use_ssl": parse_bool_env(os.environ.get("AURA_SMTP_SSL"), False),
+        "username": username,
+        "password": password,
+        "from_name": from_name,
+        "admin_email": admin_email,
+        "use_tls": use_tls,
+        "use_ssl": use_ssl,
     }
 
 
@@ -1070,6 +1131,10 @@ def build_admin_alert(query: dict[str, list[str]]) -> str:
         "client_added": "Alumno creado.",
         "client_duplicated": "Alumno duplicado.",
         "client_exists": "Ese usuario ya existe.",
+        "smtp_test_ok": "Prueba SMTP enviada correctamente.",
+        "smtp_test_disabled": "SMTP desactivado. Activa AURA_SMTP_ENABLED o define credenciales.",
+        "smtp_test_incomplete": "SMTP incompleto. Faltan variables HOST/USER/PASS.",
+        "smtp_test_failed": "La prueba SMTP falló. Revisa el detalle técnico en la tarjeta Estado SMTP.",
     }
     if status not in messages:
         return ""
@@ -1525,6 +1590,9 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
             '    <div class="admin-collapsible-content coach-dashboard">',
             "      <div class=\"coach-dashboard-head\">",
             '        <a class="btn glass ghost small" href="/admin/export/json">⬇ Descargar todos los JSON en ZIP</a>',
+            '        <form class="admin-inline-form" action="/admin/smtp/test" method="post">',
+            '          <button class="btn glass ghost small" type="submit">Probar SMTP</button>',
+            "        </form>",
             "      </div>",
             storage_html,
             smtp_html,
@@ -1749,9 +1817,12 @@ def render_submission_media(submission: dict) -> str:
         ext = Path(file_name).suffix.lower()
         src = f"/uploads/{file_name}"
         if ext in ALLOWED_IMAGE_EXT:
-            return f'<img src="{html.escape(src)}" alt="{html.escape(submission.get("title", ""))}">'
+            return (
+                f'<img src="{html.escape(src)}" alt="{html.escape(submission.get("title", ""))}" '
+                'loading="lazy" decoding="async">'
+            )
         return (
-            f'<video src="{html.escape(src)}" autoplay loop muted playsinline preload="metadata"></video>'
+            f'<video data-src="{html.escape(src)}" autoplay loop muted playsinline preload="none"></video>'
         )
     if video_url:
         return (
@@ -1921,7 +1992,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-5\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-7\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2047,17 +2118,23 @@ def render_video_media(video: dict) -> str:
         ext = Path(file_name).suffix.lower()
         src = f"/uploads/{file_name}"
         if ext in ALLOWED_IMAGE_EXT:
-            return f'<img src="{html.escape(src)}" alt="{html.escape(video.get("title", ""))}">'
+            return (
+                f'<img src="{html.escape(src)}" alt="{html.escape(video.get("title", ""))}" '
+                'loading="lazy" decoding="async">'
+            )
         return (
-            f'<video src="{html.escape(src)}" autoplay loop muted playsinline preload="metadata"></video>'
+            f'<video data-src="{html.escape(src)}" autoplay loop muted playsinline preload="none"></video>'
         )
     if video_url:
         ext = Path(video_url).suffix.lower()
         src = html.escape(video_url)
         if ext in ALLOWED_IMAGE_EXT:
-            return f'<img src="{src}" alt="{html.escape(video.get("title", ""))}">'
+            return (
+                f'<img src="{src}" alt="{html.escape(video.get("title", ""))}" '
+                'loading="lazy" decoding="async">'
+            )
         if ext in ALLOWED_VIDEO_EXT:
-            return f'<video src="{src}" autoplay loop muted playsinline preload="metadata"></video>'
+            return f'<video data-src="{src}" autoplay loop muted playsinline preload="none"></video>'
     return PLACEHOLDER_SVG
 
 
@@ -2355,7 +2432,7 @@ def render_sponsors(sponsors: list[dict]) -> str:
             "\n".join(
                 [
                     open_tag,
-                    f"  <img class=\"sponsor-logo\" src=\"{logo}\" alt=\"{name}\">",
+                    f"  <img class=\"sponsor-logo\" src=\"{logo}\" alt=\"{name}\" loading=\"lazy\" decoding=\"async\">",
                     f"  <span class=\"sponsor-name\">{name}</span>",
                     "  <p class=\"sponsor-offer\">10% de descuento con el código <strong>FITA10</strong></p>",
                     close_tag,
@@ -2888,7 +2965,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-5\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-7\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3154,14 +3231,17 @@ def send_email(
 
     if use_ssl:
         with smtplib.SMTP_SSL(host, port, timeout=10) as server:
+            server.ehlo()
             if username and password:
                 server.login(username, password)
             server.send_message(msg)
         return
 
     with smtplib.SMTP(host, port, timeout=10) as server:
+        server.ehlo()
         if use_tls:
             server.starttls()
+            server.ehlo()
         if username and password:
             server.login(username, password)
         server.send_message(msg)
@@ -3296,6 +3376,28 @@ def notify_password_reset(username: str, email_value: str, reset_url: str, smtp_
     return True, "ok"
 
 
+def notify_smtp_test(smtp_settings: dict) -> tuple[bool, str]:
+    if not smtp_settings.get("enabled"):
+        return False, "smtp_disabled"
+    if smtp_missing_fields(smtp_settings):
+        return False, "smtp_incomplete"
+    target_email = str(smtp_settings.get("admin_email") or smtp_settings.get("username") or "").strip()
+    if not target_email:
+        return False, "smtp_incomplete"
+    subject = "Prueba SMTP - Aura Calistenia"
+    body = (
+        "Correo de prueba enviado desde el panel admin.\n\n"
+        "Si recibes este email, la configuración SMTP funciona correctamente."
+    )
+    try:
+        send_email(smtp_settings, target_email, subject, body)
+        clear_smtp_error()
+    except Exception as exc:
+        remember_smtp_error(exc)
+        return False, "smtp_failed"
+    return True, "ok"
+
+
 def handle_file_upload(field: UploadedFile) -> tuple[str, str] | None:
     if not field.filename:
         return None
@@ -3336,6 +3438,30 @@ def move_item_by_id(items: list[dict], item_id: str, direction: str) -> tuple[li
 class AuraHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
+
+    def end_headers(self) -> None:
+        path = urllib.parse.urlparse(self.path).path.lower()
+        static_ext = (
+            ".css",
+            ".js",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".svg",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".ogg",
+            ".mov",
+            ".woff",
+            ".woff2",
+        )
+        if path.startswith("/uploads/") or path.endswith(static_ext):
+            self.send_header("Cache-Control", "public, max-age=604800, immutable")
+        elif path in {"/", "/admin", "/admin/", "/portal", "/portal/", "/password/reset"} or path.endswith(".html"):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def send_html(self, content: str, status: int = HTTPStatus.OK) -> None:
         encoded = content.encode("utf-8")
@@ -3446,6 +3572,10 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path == "/admin.html":
             self.redirect("/admin")
+            return
+
+        if path == "/legal":
+            self.redirect("/legal.html")
             return
 
         if path == "/portal" or path == "/portal/":
@@ -3565,6 +3695,10 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path == "/admin/content":
             self.handle_content_update()
+            return
+
+        if path == "/admin/smtp/test":
+            self.handle_smtp_test()
             return
 
         if path == "/admin/clients/add":
@@ -4092,6 +4226,20 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         save_json(CONTENT_PATH, content)
         self.admin_redirect("content_saved")
+
+    def handle_smtp_test(self) -> None:
+        smtp_settings = load_smtp_settings()
+        ok, reason = notify_smtp_test(smtp_settings)
+        if ok:
+            self.redirect("/admin?admin_status=smtp_test_ok")
+            return
+        if reason == "smtp_disabled":
+            self.redirect("/admin?admin_status=smtp_test_disabled")
+            return
+        if reason == "smtp_incomplete":
+            self.redirect("/admin?admin_status=smtp_test_incomplete")
+            return
+        self.redirect("/admin?admin_status=smtp_test_failed")
 
     def handle_client_add(self) -> None:
         data, _ = parse_post_data(self)

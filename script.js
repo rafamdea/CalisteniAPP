@@ -1,8 +1,17 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const lowPerfDevice = (() => {
+    const cores = Number(navigator.hardwareConcurrency || 8);
+    const memory = Number(navigator.deviceMemory || 8);
+    return cores <= 4 || memory <= 4;
+  })();
+  if (lowPerfDevice) {
+    document.documentElement.classList.add("perf-lite");
+  }
+
   const fallbackVideos = [
     '<div class="video-card tall stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/dominadas.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/dominadas.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Dominadas</span>',
@@ -12,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "</div>",
     '<div class="video-card wide stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/muscle-up.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/muscle-up.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Muscle up</span>',
@@ -22,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "</div>",
     '<div class="video-card stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/pino-video.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/pino-video.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Pino</span>',
@@ -32,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "</div>",
     '<div class="video-card tall stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/front-lever.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/front-lever.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Front lever</span>',
@@ -42,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "</div>",
     '<div class="video-card wide stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/fondos.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/fondos.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Fondos</span>',
@@ -52,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "</div>",
     '<div class="video-card stagger-item">',
     '  <div class="video-thumb">',
-    '    <video src="FOTOS/back-lever.mp4" autoplay loop muted playsinline preload="metadata"></video>',
+    '    <video data-src="FOTOS/back-lever.mp4" autoplay loop muted playsinline preload="none"></video>',
     "  </div>",
     '  <div class="video-meta">',
     '    <span class="tag glass-pill">Back lever</span>',
@@ -118,8 +127,25 @@ document.addEventListener("DOMContentLoaded", () => {
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  const ensureVideoSource = (video) => {
+    const src = video.getAttribute("src");
+    if (src && src.trim()) {
+      return true;
+    }
+    const lazySrc = (video.dataset && video.dataset.src) || video.getAttribute("data-src") || "";
+    if (!lazySrc.trim()) {
+      return false;
+    }
+    video.setAttribute("src", lazySrc.trim());
+    video.load();
+    return true;
+  };
+
   const safePlayVideo = (video) => {
     if (prefersReducedMotion) {
+      return;
+    }
+    if (!ensureVideoSource(video)) {
       return;
     }
     const playPromise = video.play();
@@ -173,6 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const allVideos = Array.from(document.querySelectorAll("video"));
   allVideos.forEach((video) => {
+    video.preload = "none";
     lockMute(video);
     setupLoopIndicator(video);
     video.dataset.inViewport = "false";
@@ -184,18 +211,18 @@ document.addEventListener("DOMContentLoaded", () => {
       (entries) => {
         entries.forEach((entry) => {
           const video = entry.target;
-          const isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.25;
+          const isVisible = entry.isIntersecting;
           if (isVisible) {
             video.dataset.inViewport = "true";
             safePlayVideo(video);
-          } else {
+          } else if (video.dataset.inViewport === "true") {
             pauseVideo(video);
           }
         });
       },
       {
-        threshold: [0, 0.25, 0.5],
-        rootMargin: "120px 0px 120px 0px",
+        threshold: 0.1,
+        rootMargin: "200px 0px 200px 0px",
       }
     );
     allVideos.forEach((video) => videoObserver.observe(video));
@@ -884,22 +911,25 @@ document.addEventListener("DOMContentLoaded", () => {
   staggerGroups.forEach((group) => {
     const items = group.querySelectorAll(".stagger-item");
     items.forEach((item, index) => {
-      item.style.setProperty("--stagger-delay", `${index * 0.12}s`);
+      item.style.setProperty("--stagger-delay", `${index * 0.06}s`);
     });
   });
 
   const reveals = document.querySelectorAll(".reveal");
-  const observer = new IntersectionObserver(
-    (entries, obs) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-visible");
-          obs.unobserve(entry.target);
-        }
-      });
-    },
-    { threshold: 0.2 }
-  );
-
-  reveals.forEach((section) => observer.observe(section));
+  if (prefersReducedMotion || lowPerfDevice) {
+    reveals.forEach((section) => section.classList.add("is-visible"));
+  } else {
+    const observer = new IntersectionObserver(
+      (entries, obs) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: "80px 0px 80px 0px" }
+    );
+    reveals.forEach((section) => observer.observe(section));
+  }
 });
