@@ -1462,15 +1462,22 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
             "style=\"--done:"
             f"{donut_done};--missed:{donut_missed};--pending:{donut_pending};\""
         )
+        open_attr = ""
+        if active_week is None or active_week == week_index:
+            open_attr = " open"
         parts.append(
-            f'    <div class="training-week stagger-item{hidden_class}" id="week{week_index}" data-week="{week_index}">'
+            f'    <details class="training-week stagger-item{hidden_class}" id="week{week_index}" data-week="{week_index}"{open_attr}>'
         )
-        parts.append('      <div class="training-week-top">')
-        parts.append(f'        <div class="training-week-title">{week_title}</div>')
+        parts.append('      <summary class="training-week-summary">')
+        parts.append('        <div class="training-week-top">')
+        parts.append(f'          <div class="training-week-title">{week_title}</div>')
         parts.append(
-            f'        <div class="week-kpi"><span>✓ {week_stats["done"]} ({week_stats["done_pct"]}%)</span><span>✕ {week_stats["missed"]} ({week_stats["missed_pct"]}%)</span><span>⏳ {week_stats["pending"]} ({week_stats["pending_pct"]}%)</span></div>'
+            f'          <div class="week-kpi"><span>✓ {week_stats["done"]} ({week_stats["done_pct"]}%)</span><span>✕ {week_stats["missed"]} ({week_stats["missed_pct"]}%)</span><span>⏳ {week_stats["pending"]} ({week_stats["pending_pct"]}%)</span></div>'
         )
-        parts.append("      </div>")
+        parts.append("        </div>")
+        parts.append('        <span class="training-week-toggle" aria-hidden="true">Minimizar</span>')
+        parts.append("      </summary>")
+        parts.append('      <div class="training-week-body">')
         parts.append('      <div class="week-chart-row">')
         parts.append(
             f'        <div class="week-donut" {donut_style}><span>{week_stats["done_pct"]}%</span></div>'
@@ -1499,7 +1506,7 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
                 parts.append('          <p class="plan-empty">Descanso o movilidad.</p>')
             if not rest_flag and isinstance(items, list) and items:
                 if len(items) > 1:
-                    parts.append('          <span class="portal-scroll-hint">Desliza para ver más ejercicios →</span>')
+                    parts.append('          <span class="portal-scroll-hint">Más de un ejercicio en este día.</span>')
                 parts.append('          <div class="plan-items portal-items-row">')
                 for item_index, item in enumerate(items, start=1):
                     if not isinstance(item, dict):
@@ -1575,7 +1582,8 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
         )
         parts.append('        <button class="btn glass ghost small" type="submit">Guardar resumen</button>')
         parts.append("      </form>")
-        parts.append("    </div>")
+        parts.append("      </div>")
+        parts.append("    </details>")
     parts.append("  </div>")
     parts.append("</div>")
     parts.append(
@@ -1763,7 +1771,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-1\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-2\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2713,7 +2721,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-1\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-2\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",

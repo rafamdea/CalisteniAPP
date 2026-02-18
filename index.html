@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=20260218-1">
+    <link rel="stylesheet" href="/styles.css?v=20260218-2">
   </head>
   <body>
     <div class="noise" aria-hidden="true"></div>
@@ -49,8 +49,7 @@
           <h1 class="stagger-item">{{HERO_TITLE}}</h1>
           <p class="lead stagger-item">{{HERO_SUBTITLE}}</p>
           <div class="hero-actions stagger-item">
-            <a class="btn glass primary" href="#registro">Registrarse</a>
-            <a class="btn glass ghost" href="#bio">Ver la web</a>
+            <a class="btn glass primary hero-register-btn" href="#registro">Registrarse</a>
           </div>
           <div class="hero-stats" data-stagger>
             {{HERO_STATS}}
@@ -150,9 +149,6 @@
               <li>Cuenta tu problema o inquietud para ajustar el plan.</li>
               <li>Recibirás respuesta con los siguientes pasos.</li>
             </ol>
-            <div class="form-actions">
-              <a class="btn glass ghost" href="#bio">Ver la web</a>
-            </div>
             <!-- {{FORM_ALERT}} -->
             <form class="apply-form" action="/apply" method="post">
               <div class="form-row">
@@ -349,11 +345,25 @@
           <p><strong>Teléfono:</strong> {{CONTACT_PHONE}}</p>
           <p><strong>Ciudad:</strong> {{CONTACT_CITY}}</p>
           <p><strong>Instagram:</strong> {{CONTACT_INSTAGRAM}}</p>
+          <a
+            class="btn glass primary whatsapp-btn"
+            href="https://wa.me/34644660583?text=Hola%20buenas.%20Me%20pongo%20en%20contacto%20contigo%20en%20relaci%C3%B3n%20con%20el%20planning%20de%204%20semanas%20de%20entrenamiento"
+            target="_blank"
+            rel="noopener"
+          >
+            <span class="whatsapp-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <circle cx="12" cy="12" r="11"></circle>
+                <path d="M7.2 7.2h2.3l1.2 3.1-1.4 1.4c.9 1.7 2.3 3.1 4 4l1.4-1.4 3.1 1.2v2.3c0 .5-.4.9-.9.9C11.4 18.7 5.3 12.6 5.3 8.1c0-.5.4-.9.9-.9z"></path>
+              </svg>
+            </span>
+            WhatsApp directo
+          </a>
         </div>
       </div>
       <div class="footer-bottom">Aura Calistenia - 2026</div>
     </footer>
 
-    <script src="/script.js?v=20260217-2"></script>
+    <script src="/script.js?v=20260218-1"></script>
   </body>
 </html>

@@ -350,6 +350,11 @@ h3 {
   flex-wrap: wrap;
 }
 
+.hero-register-btn {
+  min-width: clamp(240px, 40vw, 460px);
+  padding-inline: clamp(28px, 4vw, 58px);
+}
+
 .hero-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -934,15 +939,63 @@ h3 {
 }
 
 .training-week {
-  padding: 20px;
   border-radius: 24px;
   border: 1px solid rgba(74, 241, 173, 0.2);
   background: linear-gradient(160deg, rgba(8, 30, 22, 0.9), rgba(4, 8, 6, 0.9));
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
 
 .training-week.is-hidden-week {
   display: none;
+}
+
+.training-week-summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: stretch;
+  padding: 16px 18px;
+  background: rgba(9, 24, 18, 0.72);
+  border-bottom: 1px solid rgba(74, 241, 173, 0.18);
+}
+
+.training-week-summary::-webkit-details-marker {
+  display: none;
+}
+
+.training-week-body {
+  padding: 18px;
+}
+
+.training-week-toggle {
+  border-radius: 12px;
+  border: 1px solid rgba(74, 241, 173, 0.24);
+  background: rgba(74, 241, 173, 0.1);
+  color: rgba(232, 249, 240, 0.92);
+  padding: 8px 6px;
+  min-width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+}
+
+.training-week-toggle::before {
+  content: "▸";
+  font-size: 0.82rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.training-week[open] .training-week-toggle::before {
+  transform: rotate(90deg);
 }
 
 .training-week-title {
@@ -959,7 +1012,6 @@ h3 {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
 }
 
 .week-kpi {
@@ -1086,32 +1138,12 @@ h3 {
 
 .portal-items-row {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(280px, 360px);
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-}
-
-.portal-items-row::-webkit-scrollbar {
-  height: 6px;
-}
-
-.portal-items-row::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
-}
-
-.portal-items-row::-webkit-scrollbar-thumb {
-  background: rgba(74, 241, 173, 0.34);
-  border-radius: 999px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
 }
 
 .portal-items-row .portal-item {
   min-width: 0;
-  scroll-snap-align: start;
 }
 
 .portal-item.done {
@@ -1259,7 +1291,7 @@ h3 {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
 }
-
+ fusta
 .chat-message.is-own {
   border-color: rgba(74, 241, 173, 0.35);
   background: rgba(74, 241, 173, 0.12);
@@ -1400,6 +1432,35 @@ h3 {
 
 .contact-card p {
   margin-bottom: 10px;
+}
+
+.whatsapp-btn {
+  margin-top: 8px;
+  width: 100%;
+  max-width: 360px;
+  gap: 10px;
+}
+
+.whatsapp-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  color: #25d366;
+  flex-shrink: 0;
+}
+
+.whatsapp-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.whatsapp-icon circle {
+  fill: currentColor;
+}
+
+.whatsapp-icon path {
+  fill: #ffffff;
 }
 
 .footer-bottom {
@@ -1893,6 +1954,10 @@ h3 {
 
 .portal-body {
   background: #050706;
+}
+
+.portal-body .container {
+  width: min(1520px, 96%);
 }
 
 .coach-dashboard {
@@ -2493,7 +2558,15 @@ h3 {
   }
 
   .portal-items-row {
-    grid-auto-columns: minmax(300px, 84vw);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .training-week-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .training-week-toggle {
+    min-width: 38px;
   }
 
   .plan-day-head {
@@ -2562,6 +2635,11 @@ h3 {
     font-size: 0.65rem;
   }
 
+  .hero-register-btn {
+    min-width: 0;
+    width: 100%;
+  }
+
   .hero-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
@@ -2594,7 +2672,18 @@ h3 {
   }
 
   .portal-items-row {
-    grid-auto-columns: 88vw;
+    grid-template-columns: 1fr;
+  }
+
+  .training-week-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .training-week-toggle {
+    writing-mode: horizontal-tb;
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .coach-progress-content {

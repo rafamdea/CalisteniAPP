@@ -808,7 +808,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const applyWeekFilter = (weekValue) => {
       document.querySelectorAll(".training-week").forEach((weekCard) => {
         const cardWeek = weekCard.dataset.week || "";
-        weekCard.style.display = weekValue === "all" || cardWeek === weekValue ? "" : "none";
+        const visible = weekValue === "all" || cardWeek === weekValue;
+        weekCard.style.display = visible ? "" : "none";
+        if (visible && weekValue !== "all" && weekCard.tagName === "DETAILS") {
+          weekCard.open = true;
+        }
       });
     };
     applyWeekFilter(portalWeekSelect.value || "all");
