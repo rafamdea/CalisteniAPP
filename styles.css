@@ -216,6 +216,10 @@ h3 {
   gap: 16px;
 }
 
+.nav-inner.nav-inner-legal {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .nav-group {
   display: flex;
   align-items: center;
@@ -231,6 +235,11 @@ h3 {
 
 .nav-right {
   justify-content: center;
+}
+
+.nav-legal-group {
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .nav-group a {
@@ -2645,6 +2654,23 @@ h3 {
   .nav-brand {
     justify-content: center;
     margin: 0;
+  }
+
+  .nav-inner.nav-inner-legal {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .nav-legal-group {
+    justify-content: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 4px 2px;
+    scrollbar-width: none;
+  }
+
+  .nav-legal-group::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-compact {

@@ -542,48 +542,123 @@ def parse_bool_env(value: str | None, default_value: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def env_first(*keys: str, default: str = "") -> str:
+def env_lookup_raw(key: str) -> tuple[str | None, str]:
+    direct_variants = (key, key.upper(), key.lower())
+    for candidate in direct_variants:
+        if candidate in os.environ:
+            return os.environ.get(candidate), candidate
+    key_lower = key.lower()
+    for candidate, raw in os.environ.items():
+        if candidate.lower() == key_lower:
+            return raw, candidate
+    return None, ""
+
+
+def env_first_with_source(*keys: str, default: str = "") -> tuple[str, str]:
     for key in keys:
-        raw = os.environ.get(key)
+        raw, source = env_lookup_raw(key)
         if raw is None:
             continue
         value = str(raw).strip()
         if value:
-            return value
-    return default
+            return value, source or key
+    return default, ""
+
+
+def env_first(*keys: str, default: str = "") -> str:
+    value, _ = env_first_with_source(*keys, default=default)
+    return value
+
+
+def parse_bool_env_keys_with_source(keys: list[str], default_value: bool) -> tuple[bool, str]:
+    for key in keys:
+        raw, source = env_lookup_raw(key)
+        if raw is None or not str(raw).strip():
+            continue
+        return parse_bool_env(str(raw), default_value), source or key
+    return default_value, ""
 
 
 def parse_bool_env_keys(keys: list[str], default_value: bool) -> bool:
-    for key in keys:
-        raw = os.environ.get(key)
-        if raw is None or not str(raw).strip():
-            continue
-        return parse_bool_env(str(raw), default_value)
-    return default_value
+    value, _ = parse_bool_env_keys_with_source(keys, default_value)
+    return value
 
 
 def smtp_defaults_from_env() -> dict:
-    host = env_first("AURA_SMTP_HOST", "SMTP_HOST", "MAIL_HOST")
-    username = env_first("AURA_SMTP_USER", "SMTP_USER", "SMTP_USERNAME", "MAIL_USER", "MAIL_USERNAME")
-    password = env_first(
+    host, host_source = env_first_with_source(
+        "AURA_SMTP_HOST",
+        "AURA_MAIL_HOST",
+        "SMTP_HOST",
+        "MAIL_HOST",
+        "EMAIL_HOST",
+        "GMAIL_SMTP_HOST",
+    )
+    username, username_source = env_first_with_source(
+        "AURA_SMTP_USER",
+        "AURA_SMTP_USERNAME",
+        "AURA_MAIL_USER",
+        "AURA_MAIL_USERNAME",
+        "SMTP_USER",
+        "SMTP_USERNAME",
+        "MAIL_USER",
+        "MAIL_USERNAME",
+        "EMAIL_USER",
+        "EMAIL_USERNAME",
+        "GMAIL_USER",
+        "GMAIL_EMAIL",
+        "SMTP_LOGIN",
+    )
+    password, password_source = env_first_with_source(
         "AURA_SMTP_PASS",
+        "AURA_SMTP_PASSWORD",
+        "AURA_MAIL_PASS",
+        "AURA_MAIL_PASSWORD",
         "SMTP_PASS",
         "SMTP_PASSWORD",
         "MAIL_PASS",
         "MAIL_PASSWORD",
+        "EMAIL_PASS",
+        "EMAIL_PASSWORD",
         "GMAIL_APP_PASSWORD",
+        "GMAIL_PASS",
+        "SMTP_APP_PASSWORD",
+        "APP_PASSWORD",
     )
-    from_name = env_first("AURA_SMTP_FROM", "SMTP_FROM", "MAIL_FROM", "MAIL_FROM_NAME", default="Aura Calistenia")
-    admin_email = env_first("AURA_SMTP_ADMIN", "SMTP_ADMIN", "MAIL_ADMIN")
+    from_name, from_source = env_first_with_source(
+        "AURA_SMTP_FROM",
+        "AURA_MAIL_FROM",
+        "SMTP_FROM",
+        "MAIL_FROM",
+        "MAIL_FROM_NAME",
+        "EMAIL_FROM",
+        "FROM_NAME",
+        default="Aura Calistenia",
+    )
+    admin_email, admin_source = env_first_with_source(
+        "AURA_SMTP_ADMIN",
+        "AURA_SMTP_ADMIN_EMAIL",
+        "AURA_MAIL_ADMIN",
+        "SMTP_ADMIN",
+        "MAIL_ADMIN",
+        "ADMIN_EMAIL",
+        "SMTP_TO",
+    )
 
-    tls_keys = ["AURA_SMTP_TLS", "SMTP_TLS", "MAIL_TLS"]
-    ssl_keys = ["AURA_SMTP_SSL", "SMTP_SSL", "MAIL_SSL"]
-    enabled_keys = ["AURA_SMTP_ENABLED", "SMTP_ENABLED", "MAIL_ENABLED"]
+    tls_keys = ["AURA_SMTP_TLS", "AURA_MAIL_TLS", "SMTP_TLS", "MAIL_TLS", "EMAIL_TLS"]
+    ssl_keys = ["AURA_SMTP_SSL", "AURA_MAIL_SSL", "SMTP_SSL", "MAIL_SSL", "EMAIL_SSL"]
+    enabled_keys = ["AURA_SMTP_ENABLED", "AURA_MAIL_ENABLED", "SMTP_ENABLED", "MAIL_ENABLED", "EMAIL_ENABLED"]
 
-    use_ssl = parse_bool_env_keys(ssl_keys, False)
-    use_tls = parse_bool_env_keys(tls_keys, not use_ssl)
+    use_ssl, ssl_source = parse_bool_env_keys_with_source(ssl_keys, False)
+    use_tls, tls_source = parse_bool_env_keys_with_source(tls_keys, not use_ssl)
 
-    port_raw = env_first("AURA_SMTP_PORT", "SMTP_PORT", "MAIL_PORT")
+    port_raw, port_source = env_first_with_source(
+        "AURA_SMTP_PORT",
+        "AURA_MAIL_PORT",
+        "SMTP_PORT",
+        "MAIL_PORT",
+        "EMAIL_PORT",
+        "GMAIL_SMTP_PORT",
+    )
     try:
         port = int(port_raw) if port_raw else (465 if use_ssl else 587)
     except ValueError:
@@ -605,7 +680,7 @@ def smtp_defaults_from_env() -> dict:
     if use_ssl and use_tls:
         use_tls = False
 
-    explicit_enabled = parse_bool_env_keys(enabled_keys, False)
+    explicit_enabled, enabled_source = parse_bool_env_keys_with_source(enabled_keys, False)
     has_credentials = bool(host and username and password)
     enabled = explicit_enabled or has_credentials
 
@@ -619,6 +694,15 @@ def smtp_defaults_from_env() -> dict:
         "admin_email": admin_email,
         "use_tls": use_tls,
         "use_ssl": use_ssl,
+        "source_host": host_source,
+        "source_port": port_source,
+        "source_username": username_source,
+        "source_password": password_source,
+        "source_from_name": from_source,
+        "source_admin_email": admin_source,
+        "source_tls": tls_source,
+        "source_ssl": ssl_source,
+        "source_enabled": enabled_source,
     }
 
 
@@ -1530,7 +1614,7 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
     smtp_error = SMTP_LAST_ERROR.strip()
     smtp_class = "storage-local"
     smtp_title = "SMTP desactivado"
-    smtp_detail = "Activa AURA_SMTP_ENABLED=true para enviar correos de registro y recuperación."
+    smtp_detail = "Define credenciales SMTP (host, usuario y contraseña) en Render para activar correos."
     if smtp_enabled and smtp_missing:
         smtp_class = "storage-error"
         smtp_title = "SMTP incompleto"
@@ -1547,6 +1631,9 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
     smtp_host = str(smtp_settings.get("host", "")).strip() or "(vacío)"
     smtp_user = str(smtp_settings.get("username", "")).strip() or "(vacío)"
     smtp_admin = str(smtp_settings.get("admin_email", "")).strip() or "(usa AURA_SMTP_USER)"
+    smtp_host_source = str(smtp_settings.get("source_host", "")).strip() or "no detectado"
+    smtp_user_source = str(smtp_settings.get("source_username", "")).strip() or "no detectado"
+    smtp_pass_source = str(smtp_settings.get("source_password", "")).strip() or "no detectado"
     smtp_port = int(smtp_settings.get("port", 587))
     smtp_tls = bool(smtp_settings.get("use_tls", True))
     smtp_ssl = bool(smtp_settings.get("use_ssl", False))
@@ -1564,6 +1651,12 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
         ),
         f"    <span>Usuario SMTP: {html.escape(smtp_user)}</span>",
         f"    <span>Bandeja admin: {html.escape(smtp_admin)}</span>",
+        (
+            "    <span>"
+            f"Origen variables: host={html.escape(smtp_host_source)} · "
+            f"user={html.escape(smtp_user_source)} · pass={html.escape(smtp_pass_source)}"
+            "</span>"
+        ),
     ]
     if smtp_error:
         smtp_lines.extend(
@@ -1992,7 +2085,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-7\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-8\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2965,7 +3058,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-7\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260218-8\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",

@@ -22,6 +22,7 @@ Web con landing pública, panel admin y portal de alumnos.
 
 Compatibilidad:
 - También acepta aliases: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_TLS`, `SMTP_SSL`, `SMTP_ENABLED`.
+- También detecta variantes comunes como `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_*`, `EMAIL_*`, `GMAIL_APP_PASSWORD` y keys en minúsculas.
 
 Notas:
 - Si usas puerto `465`, pon `AURA_SMTP_SSL=true`.
