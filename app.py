@@ -134,6 +134,10 @@ class UploadedFile:
     filename: str
     file: BytesIO
 
+
+class StoragePersistenceError(RuntimeError):
+    """Raised when strict persistence mode blocks local JSON fallback."""
+
 PLACEHOLDER_SVG = """
 <svg viewBox=\"0 0 320 220\" role=\"img\" aria-label=\"Video placeholder\">
   <rect width=\"320\" height=\"220\" fill=\"#0b1f17\" rx=\"20\"/>
@@ -470,11 +474,21 @@ def db_key_for_path(path: Path) -> str:
 
 def get_storage_status() -> dict:
     global STORAGE_STATUS_CACHE
+    strict_mode = REQUIRE_DB_STORAGE
+    source_label = DATABASE_URL_SOURCE or "DATABASE_URL"
+    if strict_mode and not db_enabled():
+        return {
+            "mode": "db_required_missing",
+            "title": "NEON obligatorio sin configurar",
+            "detail": f"Activa {source_label} en Render. El modo estricto bloquea guardado local JSON.",
+            "strict": True,
+        }
     if not db_enabled():
         return {
             "mode": "local",
             "title": "Modo temporal (JSON local)",
             "detail": "Este modo se borra al redeploy. Configura DATABASE_URL (o NEON_DATABASE_URL) en Render para guardar de forma persistente.",
+            "strict": False,
         }
 
     if STORAGE_STATUS_CACHE_TTL_SECONDS > 0:
@@ -495,14 +509,26 @@ def get_storage_status() -> dict:
             "mode": "db_ok",
             "title": "Neon conectado",
             "detail": f"Guardado persistente activo ({DATABASE_URL_SOURCE or 'DATABASE_URL'}).",
+            "strict": strict_mode,
         }
     except Exception as exc:
         remember_db_error(exc)
+        if strict_mode:
+            detail = (
+                f"No se puede usar {DATABASE_URL_SOURCE or 'DATABASE_URL'} ahora mismo. "
+                "Modo estricto activo: sin fallback a JSON local."
+            )
+        else:
+            detail = (
+                f"No se puede usar {DATABASE_URL_SOURCE or 'DATABASE_URL'} ahora mismo. "
+                "Se usa JSON local temporal."
+            )
         status = {
             "mode": "db_error",
             "title": "Error conectando con Neon",
-            "detail": f"No se puede usar {DATABASE_URL_SOURCE or 'DATABASE_URL'} ahora mismo. Se usa JSON local temporal.",
+            "detail": detail,
             "debug": f"{type(exc).__name__}: {exc}",
+            "strict": strict_mode,
         }
 
     if STORAGE_STATUS_CACHE_TTL_SECONDS > 0:
@@ -592,6 +618,7 @@ def save_json_local(path: Path, data) -> None:
 
 
 def seed_json_key(path: Path, default) -> None:
+    strict_mode = REQUIRE_DB_STORAGE
     if db_enabled():
         payload = default
         try:
@@ -606,6 +633,14 @@ def seed_json_key(path: Path, default) -> None:
             return
         except Exception as exc:
             remember_db_error(exc)
+            if strict_mode:
+                raise StoragePersistenceError(
+                    f"No se pudo inicializar {path.name} en NEON ({DATABASE_URL_SOURCE or 'DATABASE_URL'})."
+                ) from exc
+    elif strict_mode:
+        raise StoragePersistenceError(
+            "AURA_REQUIRE_DB está activo, pero no hay DATABASE_URL/NEON_DATABASE_URL configurada."
+        )
     if path.exists():
         return
     save_json_local(path, default)
@@ -638,6 +673,7 @@ def load_json(path: Path, default):
 
 
 def save_json(path: Path, data) -> None:
+    strict_mode = REQUIRE_DB_STORAGE
     if db_enabled():
         try:
             db_save_json(path, data)
@@ -645,6 +681,14 @@ def save_json(path: Path, data) -> None:
             return
         except Exception as exc:
             remember_db_error(exc)
+            if strict_mode:
+                raise StoragePersistenceError(
+                    f"No se pudo guardar {path.name} en NEON ({DATABASE_URL_SOURCE or 'DATABASE_URL'})."
+                ) from exc
+    elif strict_mode:
+        raise StoragePersistenceError(
+            "AURA_REQUIRE_DB está activo, pero no hay DATABASE_URL/NEON_DATABASE_URL configurada."
+        )
     save_json_local(path, data)
     cache_set_json(path, data)
 
@@ -703,6 +747,16 @@ def parse_bool_env_keys_with_source(keys: list[str], default_value: bool) -> tup
 def parse_bool_env_keys(keys: list[str], default_value: bool) -> bool:
     value, _ = parse_bool_env_keys_with_source(keys, default_value)
     return value
+
+
+REQUIRE_DB_STORAGE = parse_bool_env_keys(
+    [
+        "AURA_REQUIRE_DB",
+        "AURA_REQUIRE_NEON",
+        "AURA_REQUIRE_PERSISTENT_STORAGE",
+    ],
+    False,
+)
 
 
 def smtp_defaults_from_env() -> dict:
@@ -835,12 +889,20 @@ def smtp_defaults_from_env() -> dict:
 
 
 def ensure_data_files() -> None:
+    if REQUIRE_DB_STORAGE and not db_enabled():
+        raise StoragePersistenceError(
+            "AURA_REQUIRE_DB está activo, pero no hay DATABASE_URL/NEON_DATABASE_URL configurada."
+        )
     DATA_DIR.mkdir(exist_ok=True)
     if db_enabled():
         try:
             db_bootstrap()
         except Exception as exc:
             remember_db_error(exc)
+            if REQUIRE_DB_STORAGE:
+                raise StoragePersistenceError(
+                    f"No se pudo conectar con NEON usando {DATABASE_URL_SOURCE or 'DATABASE_URL'}."
+                ) from exc
     UPLOAD_DIR.mkdir(exist_ok=True)
 
     seed_json_key(EVENTS_PATH, DEFAULT_EVENTS)
@@ -1424,10 +1486,7 @@ def build_form_alert(query: dict[str, list[str]]) -> str:
     if not status:
         return ""
     if status == "ok":
-        text = (
-            "Solicitud recibida. Revisaremos tu alta y te enviaremos un correo con la resolución "
-            "(aceptada o no)."
-        )
+        text = "Solicitud recibida. La revisaremos y te contactaremos pronto."
         level = "success"
     elif status == "smtp_disabled":
         text = "Solicitud guardada. El envío automático de correos está desactivado temporalmente."
@@ -1491,10 +1550,7 @@ def build_access_alert(status: str, role: str) -> str:
     messages = {
         "user_ok": ("success", "Acceso correcto. Bienvenido."),
         "user_error": ("error", "Usuario o contraseña incorrectos."),
-        "user_pending": (
-            "error",
-            "Tu cuenta aún no está activa. Revisa tu email: te avisaremos por correo cuando se apruebe tu acceso.",
-        ),
+        "user_pending": ("error", "Tu cuenta aún no está activa."),
         "user_missing": ("error", "Completa usuario y contraseña."),
         "user_logout": ("success", "Sesión cerrada."),
         "user_submit_ok": ("success", "Vídeo enviado. Recibirás feedback."),
@@ -1848,18 +1904,21 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
     storage_class = "storage-local"
     if storage_mode == "db_ok":
         storage_class = "storage-ok"
-    elif storage_mode == "db_error":
+    elif storage_mode in {"db_error", "db_required_missing"}:
         storage_class = "storage-error"
     storage_title = html.escape(str(storage_status.get("title", "")))
     storage_detail = html.escape(str(storage_status.get("detail", "")))
     storage_debug = html.escape(str(storage_status.get("debug", "")))
+    storage_strict = bool(storage_status.get("strict"))
     storage_lines = [
         f'  <div class="storage-pill {storage_class}">',
         '    <span class="storage-pill-label">Estado de guardado</span>',
         f"    <strong>{storage_title}</strong>",
         f"    <span>{storage_detail}</span>",
     ]
-    if storage_mode == "db_error" and storage_debug:
+    if storage_strict:
+        storage_lines.append("    <span>Modo estricto activo: no se usa JSON local como respaldo.</span>")
+    if storage_mode in {"db_error", "db_required_missing"} and storage_debug:
         storage_lines.extend(
             [
                 '    <details class="storage-pill-debug">',
@@ -2471,7 +2530,7 @@ def render_access_section(query: dict[str, list[str]], cookie_header: str | None
         [
             '<div class="portal-card glass-card stagger-item">',
             "  <h3>Acceso a tu Área Privada</h3>",
-            "  <p>Usa tus credenciales de alumno o admin. Si acabas de registrarte, espera primero el correo de revisión.</p>",
+            "  <p>Usa tus credenciales de alumno o admin.</p>",
             f"  {alert}" if alert else "",
             "  <form class=\"admin-form\" action=\"/login\" method=\"post\">",
             "    <div class=\"form-field\">",
@@ -3417,7 +3476,7 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
             [
                 '<div class="portal-card glass-card stagger-item">',
                 "  <h3>Acceso a tu Área Privada</h3>",
-                "  <p>Introduce tu usuario y contraseña para ver tu plan. Si aún no te han aceptado, revisa antes tu correo.</p>",
+                "  <p>Introduce tu usuario y contraseña para ver tu plan.</p>",
                 f"  {user_alert}" if user_alert else "",
                 "  <form class=\"admin-form\" action=\"/login\" method=\"post\">",
                 "    <div class=\"form-field\">",
@@ -5472,13 +5531,19 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
 
 def run_server(port: int | None = None, host: str | None = None) -> None:
-    ensure_data_files()
+    try:
+        ensure_data_files()
+    except StoragePersistenceError as exc:
+        print(f"Error de persistencia: {exc}")
+        raise SystemExit(1) from exc
     if port is None:
         port = int(os.environ.get("PORT", "8000"))
     if host is None:
         host = os.environ.get("HOST", "0.0.0.0")
     server_address = (host, port)
     httpd = ThreadingHTTPServer(server_address, AuraHandler)
+    if REQUIRE_DB_STORAGE:
+        print("Modo persistente estricto activo: NEON obligatorio (sin fallback a JSON local).")
     if db_enabled():
         print(
             "Database URL detectada en "

@@ -6,6 +6,7 @@ Web con landing pública, panel admin y portal de alumnos.
 
 ### Base de datos (Neon)
 - `DATABASE_URL` = URL de conexión PostgreSQL de Neon.
+- `AURA_REQUIRE_DB` = `true` para modo estricto (si Neon falla o falta, la app no guarda en JSON local).
 
 ### SMTP (correos de registro y recuperación)
 - Mínimas (Gmail):
@@ -27,6 +28,7 @@ Compatibilidad:
 Notas:
 - Si usas puerto `465`, pon `AURA_SMTP_SSL=true`.
 - Tras cambiar variables en Render, haz redeploy del servicio.
+- En producción, activa `AURA_REQUIRE_DB=true` para evitar perder cambios por fallback local temporal.
 
 ## Diagnóstico SMTP
 
