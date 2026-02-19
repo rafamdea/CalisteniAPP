@@ -241,12 +241,22 @@ document.addEventListener("DOMContentLoaded", () => {
         if (track.scrollWidth <= track.clientWidth + 2) {
           return;
         }
-        const mostlyVertical = Math.abs(event.deltaY) > Math.abs(event.deltaX);
-        if (!mostlyVertical || Math.abs(event.deltaY) < 1) {
+        const horizontalIntent = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+        if (!horizontalIntent) {
+          return;
+        }
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (Math.abs(delta) < 1) {
+          return;
+        }
+        const next = track.scrollLeft + delta;
+        const max = track.scrollWidth - track.clientWidth;
+        const clamped = Math.max(0, Math.min(max, next));
+        if (Math.abs(clamped - track.scrollLeft) < 0.5) {
           return;
         }
         event.preventDefault();
-        track.scrollLeft += event.deltaY;
+        track.scrollLeft = clamped;
       },
       { passive: false }
     );
@@ -496,6 +506,35 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     };
 
+    const syncWeekCollapseLabel = (weekBlock) => {
+      if (!weekBlock) {
+        return;
+      }
+      const toggleButton = weekBlock.querySelector(".plan-week-toggle");
+      if (!toggleButton) {
+        return;
+      }
+      const collapsed = weekBlock.classList.contains("is-collapsed");
+      const openLabel = toggleButton.dataset.openLabel || "Minimizar";
+      const closedLabel = toggleButton.dataset.closedLabel || "Maximizar";
+      toggleButton.textContent = collapsed ? closedLabel : openLabel;
+      toggleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    };
+
+    const setWeekCollapsed = (weekBlock, collapsed) => {
+      if (!weekBlock) {
+        return;
+      }
+      weekBlock.classList.toggle("is-collapsed", Boolean(collapsed));
+      syncWeekCollapseLabel(weekBlock);
+    };
+
+    const setAllWeeksCollapsed = (collapsed) => {
+      planEditor
+        .querySelectorAll(".plan-week-block")
+        .forEach((weekBlock) => setWeekCollapsed(weekBlock, collapsed));
+    };
+
     const renderCoachProgress = (username, weekNumber) => {
       const weekSelect = document.getElementById("coach_progress_week");
       const donut = document.getElementById("coach_progress_donut");
@@ -616,6 +655,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     planEditor.querySelectorAll(".plan-day-card").forEach(updateRestState);
+    planEditor
+      .querySelectorAll(".plan-week-block")
+      .forEach((weekBlock) => syncWeekCollapseLabel(weekBlock));
     activateWeekTab(1);
     const initialUser =
       (planEditor.querySelector('input[name="username"]') || {}).value || "";
@@ -639,6 +681,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     planEditor.addEventListener("click", (event) => {
+      const toggleWeekButton = event.target.closest(".plan-week-toggle");
+      if (toggleWeekButton) {
+        event.preventDefault();
+        const weekBlock = toggleWeekButton.closest(".plan-week-block");
+        if (!weekBlock) return;
+        const collapsed = weekBlock.classList.contains("is-collapsed");
+        setWeekCollapsed(weekBlock, !collapsed);
+        return;
+      }
+
       const moveDayButton = event.target.closest(".plan-day-move");
       if (moveDayButton) {
         event.preventDefault();
@@ -720,6 +772,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const username = userSelect ? userSelect.value : "";
         if (!username) return;
         loadUserPlan(username);
+      });
+    }
+
+    const collapseWeeksButton = document.getElementById("collapse_weeks_btn");
+    if (collapseWeeksButton) {
+      collapseWeeksButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        setAllWeeksCollapsed(true);
+      });
+    }
+
+    const expandWeeksButton = document.getElementById("expand_weeks_btn");
+    if (expandWeeksButton) {
+      expandWeeksButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        setAllWeeksCollapsed(false);
       });
     }
 
