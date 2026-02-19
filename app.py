@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import html
 import json
@@ -97,6 +98,13 @@ if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", DB_TABLE):
 DAY_LABELS = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
 DB_LAST_ERROR = ""
 SMTP_LAST_ERROR = ""
+JSON_CACHE_LOCK = threading.Lock()
+JSON_CACHE: dict[str, tuple[float, object]] = {}
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+try:
+    JSON_CACHE_TTL_SECONDS = max(float(os.environ.get("AURA_CACHE_TTL_SECONDS", "5")), 0.0)
+except ValueError:
+    JSON_CACHE_TTL_SECONDS = 5.0
 
 
 @dataclass
@@ -365,6 +373,42 @@ def clear_smtp_error() -> None:
     SMTP_LAST_ERROR = ""
 
 
+def clone_json_data(data):
+    return copy.deepcopy(data)
+
+
+def cache_key_for_path(path: Path) -> str:
+    return str(path.resolve())
+
+
+def cache_get_json(path: Path):
+    if JSON_CACHE_TTL_SECONDS <= 0:
+        return None
+    key = cache_key_for_path(path)
+    now = time.monotonic()
+    with JSON_CACHE_LOCK:
+        cached = JSON_CACHE.get(key)
+        if not cached:
+            return None
+        stored_at, stored_value = cached
+        if now - stored_at > JSON_CACHE_TTL_SECONDS:
+            JSON_CACHE.pop(key, None)
+            return None
+    return clone_json_data(stored_value)
+
+
+def cache_set_json(path: Path, data) -> None:
+    if JSON_CACHE_TTL_SECONDS <= 0:
+        return
+    key = cache_key_for_path(path)
+    with JSON_CACHE_LOCK:
+        JSON_CACHE[key] = (time.monotonic(), clone_json_data(data))
+
+
+def is_valid_email(value: str) -> bool:
+    return bool(EMAIL_RE.fullmatch(str(value or "").strip()))
+
+
 def db_connect():
     if not db_enabled():
         return None
@@ -502,44 +546,65 @@ def seed_json_key(path: Path, default) -> None:
             payload = default
         try:
             db_seed_json(path, payload)
+            cache_set_json(path, payload)
             return
         except Exception as exc:
             remember_db_error(exc)
     if path.exists():
         return
     save_json_local(path, default)
+    cache_set_json(path, default)
 
 
 def load_json(path: Path, default):
+    cached = cache_get_json(path)
+    if cached is not None:
+        return cached
     if db_enabled():
         try:
-            return db_load_json(path, default)
+            loaded = db_load_json(path, default)
+            cache_set_json(path, loaded)
+            return clone_json_data(loaded)
         except Exception as exc:
             remember_db_error(exc)
     if not path.exists():
-        return default
+        cache_set_json(path, default)
+        return clone_json_data(default)
     with DATA_LOCK:
         try:
             with path.open("r", encoding="utf-8") as handle:
-                return json.load(handle)
+                loaded = json.load(handle)
+                cache_set_json(path, loaded)
+                return clone_json_data(loaded)
         except json.JSONDecodeError:
-            return default
+            cache_set_json(path, default)
+            return clone_json_data(default)
 
 
 def save_json(path: Path, data) -> None:
     if db_enabled():
         try:
             db_save_json(path, data)
+            cache_set_json(path, data)
             return
         except Exception as exc:
             remember_db_error(exc)
     save_json_local(path, data)
+    cache_set_json(path, data)
 
 
 def parse_bool_env(value: str | None, default_value: bool) -> bool:
     if value is None:
         return default_value
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    cleaned = clean_env_value(value)
+    return cleaned.lower() in {"1", "true", "yes", "on"}
+
+
+def clean_env_value(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+        return raw[1:-1].strip()
+    return raw
 
 
 def env_lookup_raw(key: str) -> tuple[str | None, str]:
@@ -559,7 +624,7 @@ def env_first_with_source(*keys: str, default: str = "") -> tuple[str, str]:
         raw, source = env_lookup_raw(key)
         if raw is None:
             continue
-        value = str(raw).strip()
+        value = clean_env_value(raw)
         if value:
             return value, source or key
     return default, ""
@@ -573,7 +638,7 @@ def env_first(*keys: str, default: str = "") -> str:
 def parse_bool_env_keys_with_source(keys: list[str], default_value: bool) -> tuple[bool, str]:
     for key in keys:
         raw, source = env_lookup_raw(key)
-        if raw is None or not str(raw).strip():
+        if raw is None or not clean_env_value(raw):
             continue
         return parse_bool_env(str(raw), default_value), source or key
     return default_value, ""
@@ -677,8 +742,15 @@ def smtp_defaults_from_env() -> dict:
     if port == 465 and not use_ssl:
         use_ssl = True
         use_tls = False
+    elif port == 587 and use_ssl:
+        use_ssl = False
+        use_tls = True
     if use_ssl and use_tls:
         use_tls = False
+    if not use_ssl and not use_tls:
+        host_lower = host.lower()
+        if host_lower == "smtp.gmail.com" or username.lower().endswith("@gmail.com"):
+            use_tls = True
 
     explicit_enabled, enabled_source = parse_bool_env_keys_with_source(enabled_keys, False)
     has_credentials = bool(host and username and password)
@@ -3132,7 +3204,11 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
         )
         return render_template(
             PORTAL_TEMPLATE,
-            {"PORTAL_CONTENT": login_card, "PORTAL_NAV_ACTIONS": ""},
+            {
+                "PORTAL_CONTENT": login_card,
+                "PORTAL_NAV_ACTIONS": "",
+                "PORTAL_HOME_HREF": "/",
+            },
         )
 
     app = find_application(applications, portal_user) or {}
@@ -3186,7 +3262,11 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
     )
     return render_template(
         PORTAL_TEMPLATE,
-        {"PORTAL_CONTENT": portal_content, "PORTAL_NAV_ACTIONS": nav_actions},
+        {
+            "PORTAL_CONTENT": portal_content,
+            "PORTAL_NAV_ACTIONS": nav_actions,
+            "PORTAL_HOME_HREF": "/portal",
+        },
     )
 
 
@@ -3324,33 +3404,80 @@ def send_email(
     if reply_to:
         msg["Reply-To"] = reply_to
 
-    host = smtp_settings.get("host")
-    port = int(smtp_settings.get("port", 587))
-    username = smtp_settings.get("username")
-    password = smtp_settings.get("password")
-    use_tls = smtp_settings.get("use_tls", True)
-    use_ssl = smtp_settings.get("use_ssl", False)
-    if port == 465 and not use_ssl:
-        # Fallback automático para proveedores que usan SMTPS directo en 465.
+    host = str(smtp_settings.get("host", "")).strip()
+    if not host:
+        raise ValueError("SMTP host vacío.")
+    try:
+        port = int(smtp_settings.get("port", 587))
+    except (TypeError, ValueError):
+        port = 587
+    username = str(smtp_settings.get("username", "")).strip()
+    password = str(smtp_settings.get("password", "")).strip()
+    use_tls = bool(smtp_settings.get("use_tls", True))
+    use_ssl = bool(smtp_settings.get("use_ssl", False))
+    if port == 465:
         use_ssl = True
         use_tls = False
+    elif port == 587 and use_ssl:
+        use_ssl = False
+        use_tls = True
+    if not use_ssl and not use_tls and host.lower() == "smtp.gmail.com":
+        use_tls = True
 
-    if use_ssl:
-        with smtplib.SMTP_SSL(host, port, timeout=10) as server:
-            server.ehlo()
-            if username and password:
-                server.login(username, password)
-            server.send_message(msg)
-        return
+    attempts: list[tuple[int, bool, bool]] = []
+    seen_attempts: set[tuple[int, bool, bool]] = set()
 
-    with smtplib.SMTP(host, port, timeout=10) as server:
-        server.ehlo()
-        if use_tls:
-            server.starttls()
-            server.ehlo()
-        if username and password:
-            server.login(username, password)
-        server.send_message(msg)
+    def add_attempt(attempt_port: int, attempt_ssl: bool, attempt_tls: bool) -> None:
+        key = (attempt_port, bool(attempt_ssl), bool(attempt_tls))
+        if key in seen_attempts:
+            return
+        seen_attempts.add(key)
+        attempts.append(key)
+
+    add_attempt(port, use_ssl, use_tls)
+    if port == 587:
+        add_attempt(465, True, False)
+    elif port == 465:
+        add_attempt(587, False, True)
+    else:
+        add_attempt(587, False, True)
+        add_attempt(465, True, False)
+
+    if host.lower() == "smtp.gmail.com":
+        add_attempt(587, False, True)
+        add_attempt(465, True, False)
+
+    last_error: Exception | None = None
+    last_attempt = (port, use_ssl, use_tls)
+    for attempt_port, attempt_ssl, attempt_tls in attempts:
+        try:
+            last_attempt = (attempt_port, attempt_ssl, attempt_tls)
+            if attempt_ssl:
+                with smtplib.SMTP_SSL(host, attempt_port, timeout=10) as server:
+                    server.ehlo()
+                    if username and password:
+                        server.login(username, password)
+                    server.send_message(msg)
+                return
+            with smtplib.SMTP(host, attempt_port, timeout=10) as server:
+                server.ehlo()
+                if attempt_tls:
+                    server.starttls()
+                    server.ehlo()
+                if username and password:
+                    server.login(username, password)
+                server.send_message(msg)
+            return
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is None:
+        raise RuntimeError("No se pudo iniciar ningún intento SMTP.")
+    attempt_port, attempt_ssl, attempt_tls = last_attempt
+    mode = "SSL" if attempt_ssl else ("STARTTLS" if attempt_tls else "PLAIN")
+    raise RuntimeError(
+        f"SMTP falló en {host}:{attempt_port} ({mode}): {type(last_error).__name__}: {last_error}"
+    ) from last_error
 
 
 def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, str]:
@@ -3365,6 +3492,7 @@ def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, st
 
     username = str(application.get("username", "")).strip()
     email_value = str(application.get("email", "")).strip()
+    reply_to_email = email_value if is_valid_email(email_value) else None
     skill = str(application.get("skill", "")).strip()
     level = str(application.get("level", "")).strip()
     goal = str(application.get("goal", "")).strip()
@@ -3435,9 +3563,9 @@ def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, st
             admin_subject,
             admin_body,
             html_body=admin_html,
-            reply_to=email_value,
+            reply_to=reply_to_email,
         )
-        if email_value:
+        if email_value and is_valid_email(email_value):
             send_email(smtp_settings, email_value, user_subject, user_body, html_body=user_html)
         clear_smtp_error()
     except Exception as exc:
@@ -3853,6 +3981,9 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if not all([username, password, email, skill, goal]):
             self.redirect("/?status=error&message=Faltan campos obligatorios")
+            return
+        if not is_valid_email(email):
+            self.redirect("/?status=error&message=Email inválido")
             return
 
         applications = load_applications()
