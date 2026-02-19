@@ -1424,7 +1424,10 @@ def build_form_alert(query: dict[str, list[str]]) -> str:
     if not status:
         return ""
     if status == "ok":
-        text = "Solicitud recibida. La revisaremos y te contactaremos pronto."
+        text = (
+            "Solicitud recibida. Revisaremos tu alta y te enviaremos un correo con la resolución "
+            "(aceptada o no)."
+        )
         level = "success"
     elif status == "smtp_disabled":
         text = "Solicitud guardada. El envío automático de correos está desactivado temporalmente."
@@ -1488,7 +1491,10 @@ def build_access_alert(status: str, role: str) -> str:
     messages = {
         "user_ok": ("success", "Acceso correcto. Bienvenido."),
         "user_error": ("error", "Usuario o contraseña incorrectos."),
-        "user_pending": ("error", "Tu cuenta aún no está activa."),
+        "user_pending": (
+            "error",
+            "Tu cuenta aún no está activa. Revisa tu email: te avisaremos por correo cuando se apruebe tu acceso.",
+        ),
         "user_missing": ("error", "Completa usuario y contraseña."),
         "user_logout": ("success", "Sesión cerrada."),
         "user_submit_ok": ("success", "Vídeo enviado. Recibirás feedback."),
@@ -2344,7 +2350,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-1\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-3\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2385,7 +2391,7 @@ def render_review_page(card_html: str, page_title: str = "Revisar solicitud - Au
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-2\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-3\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2465,7 +2471,7 @@ def render_access_section(query: dict[str, list[str]], cookie_header: str | None
         [
             '<div class="portal-card glass-card stagger-item">',
             "  <h3>Acceso a tu Área Privada</h3>",
-            "  <p>Usa tus credenciales de alumno o admin.</p>",
+            "  <p>Usa tus credenciales de alumno o admin. Si acabas de registrarte, espera primero el correo de revisión.</p>",
             f"  {alert}" if alert else "",
             "  <form class=\"admin-form\" action=\"/login\" method=\"post\">",
             "    <div class=\"form-field\">",
@@ -3358,7 +3364,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-1\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-3\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3411,7 +3417,7 @@ def render_portal_page(query: dict[str, list[str]], cookie_header: str | None) -
             [
                 '<div class="portal-card glass-card stagger-item">',
                 "  <h3>Acceso a tu Área Privada</h3>",
-                "  <p>Introduce tu usuario y contraseña para ver tu plan.</p>",
+                "  <p>Introduce tu usuario y contraseña para ver tu plan. Si aún no te han aceptado, revisa antes tu correo.</p>",
                 f"  {user_alert}" if user_alert else "",
                 "  <form class=\"admin-form\" action=\"/login\" method=\"post\">",
                 "    <div class=\"form-field\">",
@@ -3807,7 +3813,10 @@ def notify_application(
 
 
 def notify_application_decision(
-    application: dict, decision: str, smtp_settings: dict
+    application: dict,
+    decision: str,
+    smtp_settings: dict,
+    public_base_url: str = "",
 ) -> tuple[bool, str]:
     if smtp_missing_fields(smtp_settings):
         return False, "smtp_incomplete"
@@ -3818,15 +3827,35 @@ def notify_application_decision(
     if not is_valid_email(email_value):
         return False, "invalid_email"
     username = str(application.get("username", "")).strip() or "alumno"
-    subject = "Solicitud del programa Aura Calistenia"
+    base_url = str(public_base_url or "").strip().rstrip("/")
+    portal_url = f"{base_url}/portal" if base_url else "/portal"
+    portal_url_safe = html.escape(portal_url)
 
     if decision == "approved":
+        subject = "Solicitud aceptada - acceso al portal Aura Calistenia"
         body = (
             f"Hola {username},\n\n"
-            "Tu solicitud ha sido aceptada.\n\n"
-            "Nos alegra tenerte dentro del programa. Ya puedes acceder con tu usuario y "
-            "contraseña y empezar a entrenar.\n\n"
-            "Si necesitas ayuda para dar tus primeros pasos, escríbenos y te guiamos.\n\n"
+            "Tu solicitud ha sido aceptada. Bienvenido a Aura Calistenia.\n\n"
+            "ACCESO AL PORTAL\n"
+            f"- URL: {portal_url}\n"
+            f"- Usuario: {username}\n"
+            "- Contraseña: la que creaste al registrarte\n\n"
+            "GUÍA RÁPIDA DEL PORTAL\n"
+            "1) Plan activo\n"
+            "   Verás tu skill, objetivo y nivel actual.\n"
+            "2) Plan de entrenamiento\n"
+            "   Se organiza por semanas y días, con ejercicios, series, repeticiones y notas.\n"
+            "3) Estado de cada ejercicio\n"
+            "   Marca Hecho o Fallé y guarda motivo/sensaciones para seguimiento.\n"
+            "4) Resumen semanal\n"
+            "   Escribe cómo te fue en la semana y guarda el resumen.\n"
+            "5) Chat con tu profesor\n"
+            "   Usa el chat para dudas, ajustes técnicos y feedback.\n\n"
+            "PRIMEROS PASOS RECOMENDADOS\n"
+            "- Entra en la semana indicada y abre tu primer día.\n"
+            "- Completa entreno y registra notas.\n"
+            "- Si necesitas cambios, escribe por chat.\n\n"
+            "Si no recuerdas la contraseña, entra al portal y usa la opción de recuperar acceso.\n\n"
             "Un saludo,\nAura Calistenia"
         )
         html_body = "\n".join(
@@ -3835,13 +3864,30 @@ def notify_application_decision(
                 "<div style=\"max-width:640px;margin:24px auto;background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:24px;\">",
                 "<h2 style=\"margin:0 0 12px 0;color:#0d7e57;\">Solicitud aceptada</h2>",
                 f"<p style=\"margin:0 0 10px 0;\">Hola <strong>{html.escape(username)}</strong>,</p>",
-                "<p style=\"margin:0 0 12px 0;color:#2f3748;\">Tu solicitud ha sido <strong>aceptada</strong>.</p>",
-                "<p style=\"margin:0 0 12px 0;color:#5f677a;\">Nos alegra tenerte dentro del programa. Ya puedes acceder con tu usuario y contraseña y empezar a entrenar.</p>",
-                "<p style=\"margin:0;color:#5f677a;\">Si necesitas ayuda para dar tus primeros pasos, escríbenos y te guiamos.</p>",
+                "<p style=\"margin:0 0 12px 0;color:#2f3748;\">Tu solicitud ha sido <strong>aceptada</strong>. Ya puedes entrar al portal.</p>",
+                f"<p style=\"margin:0 0 16px 0;\"><a href=\"{portal_url_safe}\" style=\"display:inline-block;padding:10px 14px;background:#0d7e57;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;\">Entrar al portal</a></p>",
+                "<div style=\"padding:14px;border:1px solid #e4e8f0;border-radius:12px;background:#fafbff;margin-bottom:14px;\">",
+                "<p style=\"margin:0 0 8px 0;color:#394056;\"><strong>Datos de acceso</strong></p>",
+                f"<p style=\"margin:0 0 6px 0;color:#5f677a;\">URL: <a href=\"{portal_url_safe}\">{portal_url_safe}</a></p>",
+                f"<p style=\"margin:0 0 6px 0;color:#5f677a;\">Usuario: <strong>{html.escape(username)}</strong></p>",
+                "<p style=\"margin:0;color:#5f677a;\">Contraseña: la que creaste al registrarte</p>",
+                "</div>",
+                "<div style=\"padding:14px;border:1px solid #e4e8f0;border-radius:12px;background:#ffffff;\">",
+                "<p style=\"margin:0 0 8px 0;color:#394056;\"><strong>Qué encontrarás dentro</strong></p>",
+                "<ol style=\"margin:0 0 0 18px;padding:0;color:#49506a;\">",
+                "<li style=\"margin-bottom:6px;\"><strong>Plan activo:</strong> skill, objetivo y nivel actual.</li>",
+                "<li style=\"margin-bottom:6px;\"><strong>Plan de entrenamiento:</strong> semanas y días con ejercicios y detalles.</li>",
+                "<li style=\"margin-bottom:6px;\"><strong>Estado de ejercicios:</strong> marca Hecho/Fallé y guarda notas.</li>",
+                "<li style=\"margin-bottom:6px;\"><strong>Resumen semanal:</strong> deja balance de la semana.</li>",
+                "<li><strong>Chat con tu profesor:</strong> dudas, ajustes y feedback.</li>",
+                "</ol>",
+                "</div>",
+                "<p style=\"margin:14px 0 0 0;color:#5f677a;\">Si olvidaste la contraseña, usa la opción de recuperación desde el propio portal.</p>",
                 "</div></body></html>",
             ]
         )
     else:
+        subject = "Estado de tu solicitud - Aura Calistenia"
         body = (
             f"Hola {username},\n\n"
             "Hemos revisado tu solicitud, pero en este momento no podemos aceptarla.\n\n"
@@ -3876,6 +3922,7 @@ def notify_application_decision_async(
     application: dict,
     decision: str,
     smtp_settings: dict | None = None,
+    public_base_url: str = "",
 ) -> bool:
     settings = normalize_smtp_settings(smtp_settings) if isinstance(smtp_settings, dict) else load_smtp_settings()
     if smtp_missing_fields(settings):
@@ -3885,9 +3932,15 @@ def notify_application_decision_async(
 
     payload = clone_json_data(application if isinstance(application, dict) else {})
     settings_payload = clone_json_data(settings)
+    base_url = str(public_base_url or "").strip()
 
     def worker() -> None:
-        notify_application_decision(payload, decision, settings_payload)
+        notify_application_decision(
+            payload,
+            decision,
+            settings_payload,
+            public_base_url=base_url,
+        )
 
     run_background_task(worker)
     return True
@@ -4244,7 +4297,12 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         save_json(APPLICATIONS_PATH, applications)
         smtp_settings = load_smtp_settings()
-        queued = notify_application_decision_async(target_app, decision, smtp_settings)
+        queued = notify_application_decision_async(
+            target_app,
+            decision,
+            smtp_settings,
+            public_base_url=self.get_public_base_url(),
+        )
         status_text = "aceptada" if decision == "approved" else "rechazada"
         mail_text = (
             "Se enviará notificación al alumno en segundo plano."
@@ -5377,7 +5435,12 @@ class AuraHandler(SimpleHTTPRequestHandler):
         if updated:
             save_json(APPLICATIONS_PATH, applications)
             smtp_settings = load_smtp_settings()
-            queued = notify_application_decision_async(target_app or {}, "approved", smtp_settings)
+            queued = notify_application_decision_async(
+                target_app or {},
+                "approved",
+                smtp_settings,
+                public_base_url=self.get_public_base_url(),
+            )
             self.admin_redirect("app_approved_mail_queued" if queued else "app_approved_mail_fail")
         else:
             self.admin_redirect("error")
@@ -5399,7 +5462,12 @@ class AuraHandler(SimpleHTTPRequestHandler):
         applications = remaining
         save_json(APPLICATIONS_PATH, applications)
         smtp_settings = load_smtp_settings()
-        queued = notify_application_decision_async(target_app, "rejected", smtp_settings)
+        queued = notify_application_decision_async(
+            target_app,
+            "rejected",
+            smtp_settings,
+            public_base_url=self.get_public_base_url(),
+        )
         self.admin_redirect("app_deleted_mail_queued" if queued else "app_deleted_mail_fail")
 
 

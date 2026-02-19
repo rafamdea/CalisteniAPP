@@ -380,6 +380,21 @@ h3 {
 .hero-content {
   display: grid;
   gap: 28px;
+  justify-items: center;
+  text-align: center;
+  max-width: min(880px, 100%);
+  margin: 0 auto;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+.hero-copy .lead {
+  margin-inline: auto;
+  max-width: 60ch;
 }
 
 .hero-actions {
@@ -387,6 +402,8 @@ h3 {
   gap: 16px;
   flex-wrap: wrap;
   width: 100%;
+  justify-content: center;
+  max-width: 420px;
 }
 
 .hero-register-btn {
@@ -400,6 +417,8 @@ h3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 18px;
+  width: 100%;
+  max-width: 760px;
 }
 
 .stat {
@@ -623,15 +642,80 @@ h3 {
 }
 
 .join-steps {
-  margin-top: 12px;
-  padding-left: 18px;
+  margin-top: 10px;
+  list-style: none;
+  counter-reset: join-step;
   display: grid;
-  gap: 8px;
-  color: rgba(255, 255, 255, 0.75);
+  gap: 10px;
 }
 
 .join-steps li {
-  line-height: 1.4;
+  position: relative;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: 14px;
+  border: 1px solid rgba(74, 241, 173, 0.18);
+  background: rgba(6, 16, 11, 0.54);
+  padding: 11px 12px 11px 44px;
+}
+
+.join-steps li::before {
+  counter-increment: join-step;
+  content: counter(join-step);
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 241, 173, 0.45);
+  background: rgba(74, 241, 173, 0.14);
+  color: var(--green-300);
+  font-size: 0.76rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.join-guide {
+  margin-top: 2px;
+  border-radius: 18px;
+  border: 1px solid rgba(74, 241, 173, 0.26);
+  background: linear-gradient(140deg, rgba(74, 241, 173, 0.14), rgba(6, 15, 11, 0.74));
+  padding: 14px 16px;
+}
+
+.join-guide h4 {
+  margin: 0;
+  font-size: 0.84rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(224, 255, 239, 0.95);
+}
+
+.join-guide-list {
+  list-style: none;
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 0;
+}
+
+.join-guide-list li {
+  position: relative;
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.35;
+}
+
+.join-guide-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--green-300);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .cta-card {
@@ -1629,6 +1713,13 @@ h3 {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.7);
+}
+
+.field-help {
+  margin-top: 7px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .checkbox-field {
@@ -2866,6 +2957,10 @@ h3 {
     gap: 18px;
   }
 
+  .hero-actions {
+    max-width: 100%;
+  }
+
   h1 {
     font-size: clamp(2.4rem, 10vw, 3.4rem);
   }
@@ -2889,6 +2984,10 @@ h3 {
   .hero-register-btn {
     min-width: 0;
     width: 100%;
+  }
+
+  .join-steps li {
+    padding-left: 40px;
   }
 
   .hero-stats {
