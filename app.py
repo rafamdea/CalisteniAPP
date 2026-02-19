@@ -50,12 +50,14 @@ SESSIONS_PATH = DATA_DIR / "sessions.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 CONTENT_PATH = DATA_DIR / "content.json"
 PASSWORD_RESETS_PATH = DATA_DIR / "password_resets.json"
+APPLICATION_REVIEW_TOKENS_PATH = DATA_DIR / "application_review_tokens.json"
 
 DATA_LOCK = threading.Lock()
 ADMIN_SESSION_COOKIE = "aura_admin_session"
 USER_SESSION_COOKIE = "aura_user_session"
 SESSION_TTL = 12 * 60 * 60
 RESET_TOKEN_TTL = 60 * 60
+APPLICATION_REVIEW_TOKEN_TTL = 7 * 24 * 60 * 60
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov"}
@@ -852,6 +854,7 @@ def ensure_data_files() -> None:
 
     seed_json_key(CONTENT_PATH, DEFAULT_CONTENT)
     seed_json_key(PASSWORD_RESETS_PATH, {})
+    seed_json_key(APPLICATION_REVIEW_TOKENS_PATH, {})
 
 
 def enforce_admin_credentials() -> dict:
@@ -1237,6 +1240,103 @@ def consume_password_reset_token(token: str) -> dict | None:
     payload = tokens.pop(token.strip(), None)
     save_json(PASSWORD_RESETS_PATH, tokens)
     return payload
+
+
+def clean_application_review_tokens(tokens: dict) -> dict[str, dict]:
+    now = int(time.time())
+    cleaned: dict[str, dict] = {}
+    for raw_token, data in (tokens or {}).items():
+        if not isinstance(data, dict):
+            continue
+        token = str(raw_token).strip()
+        app_id = str(data.get("app_id", "")).strip()
+        try:
+            expires_at = int(data.get("expires_at", 0) or 0)
+        except (TypeError, ValueError):
+            expires_at = 0
+        if not token or not app_id or expires_at <= now:
+            continue
+        used = bool(data.get("used", False))
+        used_decision = str(data.get("used_decision", "")).strip().lower()
+        try:
+            used_at = int(data.get("used_at", 0) or 0)
+        except (TypeError, ValueError):
+            used_at = 0
+        record = {
+            "app_id": app_id,
+            "expires_at": expires_at,
+            "used": used,
+        }
+        if used_decision in {"approved", "rejected"}:
+            record["used_decision"] = used_decision
+        if used and used_at > 0:
+            record["used_at"] = used_at
+        cleaned[token] = record
+    return cleaned
+
+
+def load_application_review_tokens() -> dict[str, dict]:
+    stored = load_json(APPLICATION_REVIEW_TOKENS_PATH, {})
+    if not isinstance(stored, dict):
+        stored = {}
+    cleaned = clean_application_review_tokens(stored)
+    if cleaned != stored:
+        save_json(APPLICATION_REVIEW_TOKENS_PATH, cleaned)
+    return cleaned
+
+
+def create_application_review_token(app_id: str) -> str:
+    app_key = str(app_id or "").strip()
+    if not app_key:
+        return ""
+    tokens = load_application_review_tokens()
+    for token, record in list(tokens.items()):
+        if str(record.get("app_id", "")).strip() == app_key:
+            tokens.pop(token, None)
+    token = secrets.token_urlsafe(32)
+    tokens[token] = {
+        "app_id": app_key,
+        "expires_at": int(time.time()) + APPLICATION_REVIEW_TOKEN_TTL,
+        "used": False,
+    }
+    save_json(APPLICATION_REVIEW_TOKENS_PATH, tokens)
+    return token
+
+
+def peek_application_review_token(token: str) -> dict | None:
+    token_key = str(token or "").strip()
+    if not token_key:
+        return None
+    tokens = load_application_review_tokens()
+    payload = tokens.get(token_key)
+    return payload if isinstance(payload, dict) else None
+
+
+def mark_application_review_token_used(token: str, decision: str) -> dict | None:
+    token_key = str(token or "").strip()
+    if not token_key:
+        return None
+    decision_key = str(decision or "").strip().lower()
+    tokens = load_application_review_tokens()
+    payload = tokens.get(token_key)
+    if not isinstance(payload, dict):
+        return None
+    payload["used"] = True
+    if decision_key in {"approved", "rejected"}:
+        payload["used_decision"] = decision_key
+    payload["used_at"] = int(time.time())
+    tokens[token_key] = payload
+    save_json(APPLICATION_REVIEW_TOKENS_PATH, tokens)
+    return payload
+
+
+def normalize_application_decision(value: str) -> str:
+    decision = str(value or "").strip().lower()
+    if decision in {"approve", "approved"}:
+        return "approved"
+    if decision in {"reject", "rejected"}:
+        return "rejected"
+    return ""
 
 
 def create_session(username: str, role: str) -> str:
@@ -2266,6 +2366,47 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    </header>",
             "    <main class=\"section\">",
             f"      {card}",
+            "    </main>",
+            "  </body>",
+            "</html>",
+        ]
+    )
+
+
+def render_review_page(card_html: str, page_title: str = "Revisar solicitud - AuraCalistenia") -> str:
+    return "\n".join(
+        [
+            "<!doctype html>",
+            "<html lang=\"es\">",
+            "  <head>",
+            "    <meta charset=\"utf-8\">",
+            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+            f"    <title>{html.escape(page_title)}</title>",
+            "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
+            "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
+            "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-2\">",
+            "  </head>",
+            "  <body class=\"admin-body\">",
+            "    <div class=\"noise\" aria-hidden=\"true\"></div>",
+            "    <header class=\"nav\">",
+            "      <div class=\"nav-inner\">",
+            "        <nav class=\"nav-group nav-left\"></nav>",
+            "        <a class=\"nav-brand\" href=\"/\" aria-label=\"AuraCalistenia\">",
+            "          <span class=\"brand-mark\" aria-hidden=\"true\"></span>",
+            "        </a>",
+            "        <nav class=\"nav-group nav-right\">",
+            "          <a href=\"/\">Inicio</a>",
+            "          <a href=\"/admin\">Admin</a>",
+            "        </nav>",
+            "        <nav class=\"nav-group nav-compact\" aria-label=\"Navegación\">",
+            "          <a href=\"/\">Inicio</a>",
+            "          <a href=\"/admin\">Admin</a>",
+            "        </nav>",
+            "      </div>",
+            "    </header>",
+            "    <main class=\"section\">",
+            f"      {card_html}",
             "    </main>",
             "  </body>",
             "</html>",
@@ -3565,7 +3706,11 @@ def send_email(
     ) from last_error
 
 
-def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, str]:
+def notify_application(
+    application: dict,
+    smtp_settings: dict,
+    public_base_url: str = "",
+) -> tuple[bool, str]:
     if smtp_missing_fields(smtp_settings):
         return False, "smtp_incomplete"
     if not smtp_settings.get("enabled"):
@@ -3583,6 +3728,16 @@ def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, st
     goal = str(application.get("goal", "")).strip()
     concerns = str(application.get("concerns", "")).strip()
     created_text = format_date(application.get("created_at", 0)) or "Sin fecha"
+    review_token = create_application_review_token(str(application.get("id", "")).strip())
+    approve_url = ""
+    reject_url = ""
+    expiry_text = ""
+    if review_token and public_base_url:
+        base_url = public_base_url.rstrip("/")
+        encoded_token = urllib.parse.quote(review_token, safe="")
+        approve_url = f"{base_url}/admin/applications/review?token={encoded_token}&decision=approve"
+        reject_url = f"{base_url}/admin/applications/review?token={encoded_token}&decision=reject"
+        expiry_text = format_date(int(time.time()) + APPLICATION_REVIEW_TOKEN_TTL) or ""
 
     admin_subject = f"solicitud de alta - {username}"
     admin_body = (
@@ -3596,6 +3751,14 @@ def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, st
         f"Inquietudes: {concerns or 'No indicó inquietudes'}\n\n"
         "Puedes responder directamente a este mensaje para contestar al alumno."
     )
+    if approve_url and reject_url:
+        admin_body += (
+            "\n\nAcciones rápidas desde correo (con confirmación):\n"
+            f"Aceptar: {approve_url}\n"
+            f"Rechazar: {reject_url}\n"
+        )
+        if expiry_text:
+            admin_body += f"Válido hasta: {expiry_text}\n"
     admin_html = "\n".join(
         [
             "<html><body style=\"font-family:Arial,sans-serif;background:#f5f7fb;color:#1e2330;\">",
@@ -3612,6 +3775,16 @@ def notify_application(application: dict, smtp_settings: dict) -> tuple[bool, st
             f"<tr><td style=\"padding:10px;vertical-align:top;\"><strong>Inquietudes</strong></td><td style=\"padding:10px;\">{html.escape(concerns or 'No indicó inquietudes')}</td></tr>",
             "</table>",
             "<p style=\"margin:16px 0 0 0;color:#5f677a;\">Puedes responder directamente a este correo para contestar al alumno.</p>",
+            (
+                "<div style=\"margin-top:18px;padding:14px;border:1px solid #e4e8f0;border-radius:12px;background:#fafbff;\">"
+                "<p style=\"margin:0 0 10px 0;color:#394056;\"><strong>Acciones rápidas</strong></p>"
+                f"<p style=\"margin:0 0 10px 0;\"><a href=\"{html.escape(approve_url)}\" style=\"display:inline-block;padding:10px 14px;background:#0d7e57;color:#fff;text-decoration:none;border-radius:10px;\">Aceptar solicitud</a></p>"
+                f"<p style=\"margin:0 0 8px 0;\"><a href=\"{html.escape(reject_url)}\" style=\"display:inline-block;padding:10px 14px;background:#b35a3f;color:#fff;text-decoration:none;border-radius:10px;\">Rechazar solicitud</a></p>"
+                f"<p style=\"margin:0;color:#697089;font-size:12px;\">{html.escape(f'Se pedirá confirmación final. Enlace válido hasta {expiry_text}.' if expiry_text else 'Se pedirá confirmación final.')}</p>"
+                "</div>"
+            )
+            if approve_url and reject_url
+            else "",
             "</div></body></html>",
         ]
     )
@@ -3895,6 +4068,201 @@ class AuraHandler(SimpleHTTPRequestHandler):
                 proto = "https"
         return f"{proto}://{host}"
 
+    def handle_application_review(self, query: dict[str, list[str]]) -> None:
+        token = (query.get("token") or [""])[0].strip()
+        decision = normalize_application_decision((query.get("decision") or [""])[0])
+        if not token or not decision:
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Enlace no válido</h2>",
+                    "  <p>No se pudo identificar la acción de revisión.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        token_payload = peek_application_review_token(token)
+        if not token_payload:
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Enlace caducado</h2>",
+                    "  <p>Este enlace de revisión ya no está disponible.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        if token_payload.get("used"):
+            used_decision = str(token_payload.get("used_decision", "")).strip().lower()
+            used_text = "aceptada" if used_decision == "approved" else ("rechazada" if used_decision == "rejected" else "revisada")
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Solicitud ya revisada</h2>",
+                    f"  <p>Esta solicitud ya fue <strong>{used_text}</strong> con este enlace.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        app_id = str(token_payload.get("app_id", "")).strip()
+        applications = load_applications()
+        target_app = None
+        for app in applications:
+            if str(app.get("id", "")).strip() == app_id:
+                target_app = app
+                break
+
+        if not target_app:
+            mark_application_review_token_used(token, decision)
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Solicitud no disponible</h2>",
+                    "  <p>La solicitud ya no existe o fue procesada desde otro lugar.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        action_label = "aceptar" if decision == "approved" else "rechazar"
+        button_label = "Confirmar aceptación" if decision == "approved" else "Confirmar rechazo"
+        username = html.escape(str(target_app.get("username", "")).strip() or "alumno")
+        email_value = html.escape(str(target_app.get("email", "")).strip() or "sin email")
+        skill = html.escape(str(target_app.get("skill", "")).strip() or "sin skill")
+        goal = html.escape(str(target_app.get("goal", "")).strip() or "sin objetivo")
+
+        card = "\n".join(
+            [
+                '<div class="admin-login glass-card">',
+                "  <h2>Revisión desde correo</h2>",
+                f"  <p>Vas a <strong>{action_label}</strong> esta solicitud:</p>",
+                "  <ul class=\"join-steps\">",
+                f"    <li>Usuario: <strong>{username}</strong></li>",
+                f"    <li>Email: {email_value}</li>",
+                f"    <li>Skill: {skill}</li>",
+                f"    <li>Objetivo: {goal}</li>",
+                "  </ul>",
+                '  <form class="admin-form" action="/admin/applications/review/confirm" method="post">',
+                f'    <input type="hidden" name="token" value="{html.escape(token)}">',
+                f'    <input type="hidden" name="decision" value="{decision}">',
+                f'    <button class="btn glass primary" type="submit">{button_label}</button>',
+                "  </form>",
+                '  <a class="btn glass ghost small" href="/admin">Abrir panel admin</a>',
+                "</div>",
+            ]
+        )
+        self.send_html(render_review_page(card))
+
+    def handle_application_review_confirm(self) -> None:
+        data, _ = parse_post_data(self)
+        token = data.get("token", "").strip()
+        decision = normalize_application_decision(data.get("decision", ""))
+        if not token or not decision:
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Enlace no válido</h2>",
+                    "  <p>Faltan datos de confirmación.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        token_payload = peek_application_review_token(token)
+        if not token_payload:
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Enlace caducado</h2>",
+                    "  <p>Este enlace de revisión ya no está disponible.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        if token_payload.get("used"):
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Solicitud ya revisada</h2>",
+                    "  <p>Esta acción ya fue confirmada anteriormente.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        app_id = str(token_payload.get("app_id", "")).strip()
+        applications = load_applications()
+        target_app = None
+        if decision == "approved":
+            for app in applications:
+                if str(app.get("id", "")).strip() != app_id:
+                    continue
+                app["approved"] = True
+                target_app = app
+                break
+        else:
+            remaining = []
+            for app in applications:
+                if str(app.get("id", "")).strip() == app_id and target_app is None:
+                    target_app = app
+                    continue
+                remaining.append(app)
+            applications = remaining
+
+        mark_application_review_token_used(token, decision)
+
+        if not target_app:
+            card = "\n".join(
+                [
+                    '<div class="admin-login glass-card">',
+                    "  <h2>Solicitud no disponible</h2>",
+                    "  <p>La solicitud ya no existe o fue procesada desde otro lugar.</p>",
+                    '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                    "</div>",
+                ]
+            )
+            self.send_html(render_review_page(card))
+            return
+
+        save_json(APPLICATIONS_PATH, applications)
+        smtp_settings = load_smtp_settings()
+        queued = notify_application_decision_async(target_app, decision, smtp_settings)
+        status_text = "aceptada" if decision == "approved" else "rechazada"
+        mail_text = (
+            "Se enviará notificación al alumno en segundo plano."
+            if queued
+            else "No se pudo iniciar el envío del correo al alumno."
+        )
+        card = "\n".join(
+            [
+                '<div class="admin-login glass-card">',
+                "  <h2>Solicitud procesada</h2>",
+                f"  <p>La solicitud fue <strong>{status_text}</strong>.</p>",
+                f"  <p>{html.escape(mail_text)}</p>",
+                '  <a class="btn glass primary" href="/admin">Ir al panel admin</a>',
+                "</div>",
+            ]
+        )
+        self.send_html(render_review_page(card))
+
     def handle_export_json(self) -> None:
         timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         memory = BytesIO()
@@ -3908,6 +4276,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
             ("settings.json", SETTINGS_PATH),
             ("content.json", CONTENT_PATH),
             ("password_resets.json", PASSWORD_RESETS_PATH),
+            ("application_review_tokens.json", APPLICATION_REVIEW_TOKENS_PATH),
         ]
         with ZipFile(memory, mode="w", compression=ZIP_DEFLATED) as bundle:
             defaults = {
@@ -3920,6 +4289,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
                 "settings.json": {},
                 "content.json": {},
                 "password_resets.json": {},
+                "application_review_tokens.json": {},
             }
             for archive_name, source_path in files:
                 payload = load_json(source_path, defaults.get(archive_name, {}))
@@ -3937,6 +4307,10 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path in {"/", "/index.html"}:
             self.send_html(render_index(query, self.headers.get("Cookie")))
+            return
+
+        if path == "/admin/applications/review":
+            self.handle_application_review(query)
             return
 
         if path == "/admin" or path == "/admin/":
@@ -4013,6 +4387,10 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path == "/password/reset":
             self.handle_password_reset()
+            return
+
+        if path == "/admin/applications/review/confirm":
+            self.handle_application_review_confirm()
             return
 
         if path == "/user/submissions/add":
@@ -4167,7 +4545,11 @@ class AuraHandler(SimpleHTTPRequestHandler):
         if not smtp_settings.get("enabled"):
             self.redirect("/?status=smtp_disabled")
             return
-        ok, reason = notify_application(application, smtp_settings)
+        ok, reason = notify_application(
+            application,
+            smtp_settings,
+            public_base_url=self.get_public_base_url(),
+        )
         if ok:
             self.redirect("/?status=ok")
             return
