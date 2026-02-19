@@ -1393,6 +1393,7 @@ def build_access_alert(status: str, role: str) -> str:
         "user_logout": ("success", "Sesión cerrada."),
         "user_submit_ok": ("success", "Vídeo enviado. Recibirás feedback."),
         "user_submit_error": ("error", "No se pudo enviar el vídeo."),
+        "user_upload_disabled": ("error", "La subida de archivos para alumnos está desactivada."),
         "user_reset_missing": ("error", "Completa usuario y email para recuperar tu acceso."),
         "user_reset_sent": ("success", "Si los datos coinciden, te hemos enviado un enlace de restablecimiento."),
         "user_reset_smtp": ("error", "No se pudo enviar el email de recuperación en este momento."),
@@ -4938,40 +4939,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
         self.redirect(f"/admin?admin_section=portal&plan_user={plan_param}#plan")
 
     def handle_submission_add(self) -> None:
-        cookie_header = self.headers.get("Cookie")
-        portal_user = get_session_user(cookie_header, USER_SESSION_COOKIE, "user")
-        if not portal_user:
-            self.send_error(HTTPStatus.FORBIDDEN)
-            return
-        data, files = parse_post_data(self)
-        title = data.get("title", "").strip()
-        description = data.get("description", "").strip()
-        video_url = data.get("video_url", "").strip()
-        stored_file = ""
-        if "video_file" in files:
-            upload = handle_file_upload(files["video_file"])
-            if upload:
-                stored_file, _ = upload
-
-        if not title or not description or (not stored_file and not video_url):
-            self.redirect("/?access=user_submit_error#acceso")
-            return
-
-        submissions = load_submissions()
-        submissions.append(
-            {
-                "id": f"sub_{secrets.token_hex(4)}",
-                "username": portal_user,
-                "title": title,
-                "description": description,
-                "video_url": video_url,
-                "file": stored_file,
-                "created_at": int(time.time()),
-                "comments": [],
-            }
-        )
-        save_json(SUBMISSIONS_PATH, submissions)
-        self.redirect("/?access=user_submit_ok#acceso")
+        self.redirect("/portal?access=user_upload_disabled")
 
     def handle_submission_comment(self) -> None:
         data, _ = parse_post_data(self)
