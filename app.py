@@ -2135,7 +2135,7 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
         )
         parts.append("      </div>")
         parts.append(
-            '      <span class="horizontal-drag-hint" data-drag-hint>Desliza horizontalmente para ver más días.</span>'
+            '      <span class="horizontal-drag-hint" data-drag-hint>Arrastra hacia la derecha para ver más días.</span>'
         )
         parts.append('      <div class="day-grid">')
         days = week.get("days") or []
@@ -2158,7 +2158,7 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
             if not rest_flag and isinstance(items, list) and items:
                 if len(items) > 1:
                     parts.append(
-                        '          <span class="portal-scroll-hint">Desliza horizontalmente para ver más ejercicios.</span>'
+                        '          <span class="portal-scroll-hint">Desliza a la derecha para ver más ejercicios.</span>'
                     )
                 parts.append('          <div class="plan-items portal-items-row">')
                 for item_index, item in enumerate(items, start=1):
@@ -2427,7 +2427,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-10\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2450,7 +2450,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <main class=\"section\">",
             f"      {card}",
             "    </main>",
-            "    <script src=\"/script.js?v=20260225-2\"></script>",
+            "    <script src=\"/script.js?v=20260225-4\"></script>",
             "  </body>",
             "</html>",
         ]
@@ -2469,7 +2469,7 @@ def render_review_page(card_html: str, page_title: str = "Revisar solicitud - Au
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-10\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2492,7 +2492,7 @@ def render_review_page(card_html: str, page_title: str = "Revisar solicitud - Au
             "    <main class=\"section\">",
             f"      {card_html}",
             "    </main>",
-            "    <script src=\"/script.js?v=20260225-2\"></script>",
+            "    <script src=\"/script.js?v=20260225-4\"></script>",
             "  </body>",
             "</html>",
         ]
@@ -3482,7 +3482,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-10\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3517,7 +3517,7 @@ def render_login_page(error: str | None = None) -> str:
             "        </form>",
             "      </div>",
             "    </main>",
-            "    <script src=\"/script.js?v=20260225-2\"></script>",
+            "    <script src=\"/script.js?v=20260225-4\"></script>",
             "  </body>",
             "</html>",
         ]

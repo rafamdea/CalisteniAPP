@@ -138,17 +138,58 @@ document.addEventListener("DOMContentLoaded", () => {
     cue.innerHTML = '<span aria-hidden="true">⌄</span>';
     document.body.appendChild(cue);
 
-    let dismissed = false;
+    const getNavOffset = () => {
+      const nav = document.querySelector(".nav");
+      if (!nav) {
+        return 12;
+      }
+      return Math.ceil(nav.getBoundingClientRect().height) + 10;
+    };
+
+    const getNextBlockTop = () => {
+      const main = document.querySelector("main");
+      if (!main) {
+        return null;
+      }
+      const scrollY = window.scrollY;
+      const offset = getNavOffset();
+      const viewportTop = scrollY + offset;
+      const blocks = Array.from(main.children)
+        .filter((node) => node instanceof HTMLElement)
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          if (rect.height < 48) {
+            return null;
+          }
+          return scrollY + rect.top;
+        })
+        .filter((top) => typeof top === "number");
+
+      for (const top of blocks) {
+        if (top > viewportTop + 8) {
+          return Math.max(0, top - offset);
+        }
+      }
+      return null;
+    };
+
     const updateCue = () => {
       const doc = document.documentElement;
-      const canScroll = doc.scrollHeight - window.innerHeight > 90;
-      const scrolled = window.scrollY > 64;
-      cue.classList.toggle("is-hidden", !canScroll || scrolled || dismissed);
+      const maxScroll = Math.max(0, doc.scrollHeight - window.innerHeight);
+      const canScroll = maxScroll > 40;
+      const atEnd = window.scrollY >= maxScroll - 6;
+      cue.classList.toggle("is-hidden", !canScroll || atEnd);
     };
 
     cue.addEventListener("click", () => {
-      dismissed = true;
-      updateCue();
+      const nextTop = getNextBlockTop();
+      if (typeof nextTop === "number") {
+        window.scrollTo({
+          top: nextTop,
+          behavior: prefersReducedMotion ? "auto" : "smooth",
+        });
+        return;
+      }
       window.scrollBy({
         top: Math.max(window.innerHeight * 0.72, 280),
         behavior: prefersReducedMotion ? "auto" : "smooth",
@@ -157,18 +198,50 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.addEventListener("scroll", updateCue, { passive: true });
     window.addEventListener("resize", updateCue);
+    window.addEventListener("load", updateCue);
     window.setTimeout(updateCue, 120);
     updateCue();
   };
 
+  const updateHorizontalTrackState = (track) => {
+    if (!track) {
+      return;
+    }
+    const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+    const isScrollable = maxScroll > 2;
+    const canScrollRight = isScrollable && track.scrollLeft < maxScroll - 2;
+    const canScrollLeft = isScrollable && track.scrollLeft > 2;
+
+    track.classList.toggle("is-scrollable-track", isScrollable);
+    track.classList.toggle("can-scroll-right", canScrollRight);
+    track.classList.toggle("can-scroll-left", canScrollLeft);
+
+    const hint = track.previousElementSibling;
+    if (hint && hint.hasAttribute("data-drag-hint")) {
+      hint.hidden = !isScrollable;
+      hint.classList.toggle("is-end-reached", isScrollable && !canScrollRight);
+    }
+  };
+
   const syncHorizontalDragHints = () => {
     document.querySelectorAll(".day-grid, .portal-items-row").forEach((track) => {
-      const isScrollable = track.scrollWidth - track.clientWidth > 2;
-      track.classList.toggle("is-scrollable-track", isScrollable);
-      const hint = track.previousElementSibling;
-      if (hint && hint.hasAttribute("data-drag-hint")) {
-        hint.hidden = !isScrollable;
+      updateHorizontalTrackState(track);
+    });
+  };
+
+  const bindHorizontalTrackHintEvents = () => {
+    document.querySelectorAll(".day-grid, .portal-items-row").forEach((track) => {
+      if (track.dataset.hintBound === "1") {
+        return;
       }
+      track.dataset.hintBound = "1";
+      track.addEventListener(
+        "scroll",
+        () => {
+          updateHorizontalTrackState(track);
+        },
+        { passive: true }
+      );
     });
   };
 
@@ -274,6 +347,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   initScrollDownCue();
+  bindHorizontalTrackHintEvents();
   syncHorizontalDragHints();
   window.addEventListener("resize", syncHorizontalDragHints);
 
@@ -1136,6 +1210,8 @@ document.addEventListener("DOMContentLoaded", () => {
           weekCard.open = true;
         }
       });
+      bindHorizontalTrackHintEvents();
+      window.requestAnimationFrame(syncHorizontalDragHints);
     };
     applyWeekFilter(portalWeekSelect.value || "all");
     portalWeekSelect.addEventListener("change", () => {
@@ -1166,6 +1242,8 @@ document.addEventListener("DOMContentLoaded", () => {
       syncWeekToggleLabel(weekCard);
       weekCard.addEventListener("toggle", () => {
         syncWeekToggleLabel(weekCard);
+        bindHorizontalTrackHintEvents();
+        window.requestAnimationFrame(syncHorizontalDragHints);
       });
     });
   }
