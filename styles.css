@@ -46,6 +46,40 @@ main {
   z-index: 2;
 }
 
+.scroll-down-cue {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 15;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 241, 173, 0.36);
+  background: rgba(6, 16, 12, 0.72);
+  color: var(--green-300);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  opacity: 0.9;
+  animation: cue-bounce 1.7s ease-in-out infinite;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.scroll-down-cue span {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.scroll-down-cue.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  animation: none;
+  transform: translateX(-50%) translateY(10px);
+}
+
 .noise {
   position: fixed;
   inset: 0;
@@ -154,7 +188,8 @@ h3 {
 .glass-pill::after {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
+  border-radius: inherit;
   background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.5), transparent 40%);
   opacity: 0.6;
   mix-blend-mode: screen;
@@ -169,6 +204,7 @@ h3 {
   backdrop-filter: blur(12px) saturate(125%);
   -webkit-backdrop-filter: blur(12px) saturate(125%);
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .glass-card {
@@ -452,7 +488,7 @@ h3 {
   flex-wrap: wrap;
   width: 100%;
   justify-content: center;
-  max-width: 420px;
+  max-width: 760px;
 }
 
 .hero-register-btn {
@@ -926,9 +962,18 @@ h3 {
   width: 300px;
   height: 300px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(74, 241, 173, 0.3), transparent 70%);
+  background:
+    radial-gradient(circle, rgba(74, 241, 173, 0.22), transparent 62%),
+    conic-gradient(
+      from 0deg,
+      rgba(74, 241, 173, 0.46),
+      rgba(74, 241, 173, 0.1) 30%,
+      rgba(74, 241, 173, 0.46) 62%,
+      rgba(74, 241, 173, 0.08) 88%,
+      rgba(74, 241, 173, 0.46)
+    );
   filter: blur(10px);
-  animation: pulse 8s ease-in-out infinite;
+  animation: spin 16s linear infinite;
 }
 
 .events::after {
@@ -1307,10 +1352,38 @@ h3 {
 }
 
 .portal-scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.68rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
+}
+
+.portal-scroll-hint::before {
+  content: "↔";
+  font-size: 0.9rem;
+  line-height: 1;
+  color: rgba(74, 241, 173, 0.95);
+}
+
+.horizontal-drag-hint {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.67rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.horizontal-drag-hint::before {
+  content: "↔";
+  font-size: 0.9rem;
+  line-height: 1;
+  color: rgba(74, 241, 173, 0.95);
 }
 
 .portal-items-row {
@@ -1557,9 +1630,51 @@ h3 {
 }
 
 .sponsor-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 8px 0;
+}
+
+.sponsor-grid::before,
+.sponsor-grid::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: min(140px, 18vw);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sponsor-grid::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(4, 10, 8, 0.96), rgba(4, 10, 8, 0));
+}
+
+.sponsor-grid::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(4, 10, 8, 0.96), rgba(4, 10, 8, 0));
+}
+
+.sponsor-marquee {
+  width: 100%;
+  overflow: hidden;
+}
+
+.sponsor-track {
+  display: flex;
+  width: max-content;
   gap: 18px;
+  animation: sponsor-loop 24s linear infinite;
+  will-change: transform;
+}
+
+.sponsor-loop {
+  display: flex;
+  flex-shrink: 0;
+  gap: 18px;
+  min-width: max-content;
 }
 
 .sponsor-tile {
@@ -1568,6 +1683,8 @@ h3 {
   align-items: center;
   justify-items: center;
   text-align: center;
+  width: clamp(180px, 22vw, 260px);
+  min-height: 210px;
   padding: 26px 18px;
   border: 1px solid rgba(74, 241, 173, 0.2);
   transition: transform 0.4s ease, border 0.4s ease;
@@ -1612,8 +1729,12 @@ h3 {
 }
 
 .sponsor-tile:hover {
-  transform: translateY(-4px) scale(1.03);
+  transform: translateY(-4px) scale(1.02);
   border: 1px solid rgba(74, 241, 173, 0.5);
+}
+
+.sponsor-marquee:hover .sponsor-track {
+  animation-play-state: paused;
 }
 
 .footer {
@@ -1713,6 +1834,13 @@ h3 {
 .legal-card p {
   color: rgba(255, 255, 255, 0.78);
   margin-bottom: 10px;
+}
+
+.register-anchor {
+  display: block;
+  height: 1px;
+  margin-top: -1px;
+  scroll-margin-top: 124px;
 }
 
 .form-card {
@@ -2767,6 +2895,15 @@ h3 {
   animation: none;
 }
 
+.perf-lite .sponsor-track {
+  animation: none;
+  transform: translateX(0);
+}
+
+.perf-lite .sponsor-loop[aria-hidden="true"] {
+  display: none;
+}
+
 @keyframes float {
   0% {
     transform: translateY(0);
@@ -2827,6 +2964,27 @@ h3 {
   100% {
     opacity: 0.1;
     transform: translateY(0);
+  }
+}
+
+@keyframes cue-bounce {
+  0% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(6px);
+  }
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes sponsor-loop {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
@@ -2914,6 +3072,30 @@ h3 {
     padding-top: 120px;
   }
 
+  .sponsor-grid::before,
+  .sponsor-grid::after {
+    width: min(78px, 12vw);
+  }
+
+  .sponsor-track {
+    gap: 12px;
+    animation-duration: 28s;
+  }
+
+  .sponsor-loop {
+    gap: 12px;
+  }
+
+  .sponsor-tile {
+    width: clamp(160px, 34vw, 220px);
+    min-height: 188px;
+    padding: 20px 14px;
+  }
+
+  .sponsor-logo {
+    max-height: 70px;
+  }
+
   .video-arena {
     grid-auto-columns: minmax(220px, 68vw);
     padding-right: 20vw;
@@ -2939,10 +3121,11 @@ h3 {
 
   .day-grid {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(240px, 78vw);
+    grid-auto-columns: minmax(100%, 100%);
     grid-template-columns: none;
     overflow-x: auto;
     padding-bottom: 8px;
+    padding-right: 0;
     scroll-snap-type: x mandatory;
     scroll-padding-left: 2px;
     overscroll-behavior-x: contain;
@@ -2957,10 +3140,11 @@ h3 {
 
   .portal-items-row {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(260px, 74vw);
+    grid-auto-columns: minmax(100%, 100%);
     grid-template-columns: none;
     overflow-x: auto;
     padding-bottom: 8px;
+    padding-right: 0;
     scroll-snap-type: x mandatory;
     scroll-padding-left: 2px;
     overscroll-behavior-x: contain;
@@ -2970,6 +3154,10 @@ h3 {
 
   .portal-items-row .portal-item {
     scroll-snap-align: start;
+  }
+
+  .horizontal-drag-hint {
+    display: inline-flex;
   }
 
   .training-week-summary {
@@ -2999,6 +3187,10 @@ h3 {
 
   .admin-list-compact {
     max-height: 440px;
+  }
+
+  .register-anchor {
+    scroll-margin-top: 164px;
   }
 }
 
@@ -3033,12 +3225,59 @@ h3 {
     padding-bottom: 64px;
   }
 
+  .portal-body .container {
+    width: 100%;
+  }
+
+  .portal-body .admin-header,
+  .portal-body .portal-stack {
+    padding-inline: 10px;
+  }
+
+  .portal-body .portal-collapsible {
+    padding: 10px;
+  }
+
+  .portal-body .training-week-summary {
+    padding: 14px 10px;
+  }
+
+  .portal-body .training-week-body {
+    padding: 14px 10px;
+  }
+
   .hero-content {
     gap: 18px;
   }
 
   .hero-actions {
     max-width: 100%;
+  }
+
+  .sponsor-grid::before,
+  .sponsor-grid::after {
+    width: 40px;
+  }
+
+  .sponsor-track {
+    animation-duration: 30s;
+  }
+
+  .sponsor-tile {
+    width: clamp(140px, 56vw, 190px);
+    min-height: 168px;
+    padding: 18px 12px;
+  }
+
+  .sponsor-name {
+    font-size: 0.95rem;
+    letter-spacing: 0.14em;
+  }
+
+  .sponsor-offer {
+    padding: 8px 10px;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
   }
 
   h1 {
@@ -3049,6 +3288,15 @@ h3 {
     font-size: clamp(2.8rem, 13vw, 4.6rem);
     letter-spacing: 0.12em;
     margin-bottom: 8px;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-fill-color: var(--white);
+    color: var(--white);
+    animation: none;
+    text-shadow:
+      0 0 10px rgba(74, 241, 173, 0.25),
+      0 10px 28px rgba(0, 0, 0, 0.52);
   }
 
   .lead {
@@ -3113,13 +3361,13 @@ h3 {
   }
 
   .day-grid {
-    grid-auto-columns: 86vw;
-    padding-right: 10vw;
+    grid-auto-columns: minmax(100%, 100%);
+    padding-right: 0;
   }
 
   .portal-items-row {
-    grid-auto-columns: 86vw;
-    padding-right: 10vw;
+    grid-auto-columns: minmax(100%, 100%);
+    padding-right: 0;
   }
 
   .training-week-summary {
@@ -3162,5 +3410,13 @@ h3 {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+
+  .scroll-down-cue {
+    animation: none !important;
+  }
+
+  .sponsor-loop[aria-hidden="true"] {
+    display: none;
   }
 }

@@ -56,6 +56,7 @@ DATA_LOCK = threading.Lock()
 ADMIN_SESSION_COOKIE = "aura_admin_session"
 USER_SESSION_COOKIE = "aura_user_session"
 SESSION_TTL = 12 * 60 * 60
+USER_HOME_GRACE_TTL = 5 * 60
 RESET_TOKEN_TTL = 60 * 60
 APPLICATION_REVIEW_TOKEN_TTL = 7 * 24 * 60 * 60
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -1531,6 +1532,8 @@ def build_admin_alert(query: dict[str, list[str]]) -> str:
         "submission_deleted": "Envío eliminado.",
         "content_saved": "Contenido web actualizado.",
         "client_added": "Alumno creado.",
+        "client_added_active_mail_queued": "Alumno creado y activado. Enviando correo de acceso en segundo plano.",
+        "client_added_active_mail_fail": "Alumno creado y activado, pero no se pudo iniciar el envío del correo (revisa SMTP).",
         "client_duplicated": "Alumno duplicado.",
         "client_exists": "Ese usuario ya existe.",
         "smtp_test_ok": "Prueba SMTP enviada correctamente.",
@@ -1542,6 +1545,16 @@ def build_admin_alert(query: dict[str, list[str]]) -> str:
         return ""
     text = messages[status]
     return f'<div class="form-alert success">{html.escape(text)}</div>'
+
+
+def resolve_admin_section(query: dict[str, list[str]]) -> str:
+    section = str((query.get("admin_section") or [""])[0]).strip().lower()
+    if section in {"inicio", "portal"}:
+        return section
+    plan_user = str((query.get("plan_user") or [""])[0]).strip()
+    if plan_user:
+        return "portal"
+    return "inicio"
 
 
 def build_access_alert(status: str, role: str) -> str:
@@ -2121,6 +2134,9 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
             f'        <div class="week-bar"><span style="--done:{donut_done};--missed:{donut_missed};--pending:{donut_pending};"></span></div>'
         )
         parts.append("      </div>")
+        parts.append(
+            '      <span class="horizontal-drag-hint" data-drag-hint>Desliza horizontalmente para ver más días.</span>'
+        )
         parts.append('      <div class="day-grid">')
         days = week.get("days") or []
         for day_index, day_text in enumerate(days, start=1):
@@ -2141,7 +2157,9 @@ def render_training_plan(plan: dict, active_week: int | None = None) -> str:
                 parts.append('          <p class="plan-empty">Descanso o movilidad.</p>')
             if not rest_flag and isinstance(items, list) and items:
                 if len(items) > 1:
-                    parts.append('          <span class="portal-scroll-hint">Más de un ejercicio en este día.</span>')
+                    parts.append(
+                        '          <span class="portal-scroll-hint">Desliza horizontalmente para ver más ejercicios.</span>'
+                    )
                 parts.append('          <div class="plan-items portal-items-row">')
                 for item_index, item in enumerate(items, start=1):
                     if not isinstance(item, dict):
@@ -2409,7 +2427,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-4\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2432,6 +2450,7 @@ def render_password_reset_page(query: dict[str, list[str]]) -> str:
             "    <main class=\"section\">",
             f"      {card}",
             "    </main>",
+            "    <script src=\"/script.js?v=20260225-2\"></script>",
             "  </body>",
             "</html>",
         ]
@@ -2450,7 +2469,7 @@ def render_review_page(card_html: str, page_title: str = "Revisar solicitud - Au
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-4\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -2473,6 +2492,7 @@ def render_review_page(card_html: str, page_title: str = "Revisar solicitud - Au
             "    <main class=\"section\">",
             f"      {card_html}",
             "    </main>",
+            "    <script src=\"/script.js?v=20260225-2\"></script>",
             "  </body>",
             "</html>",
         ]
@@ -2878,11 +2898,11 @@ def render_sponsors(sponsors: list[dict]) -> str:
         url = html.escape(str(sponsor.get("url", "")).strip())
         if not name or not logo:
             continue
-        open_tag = '<div class="sponsor-tile glass-card stagger-item">'
+        open_tag = '<div class="sponsor-tile glass-card">'
         close_tag = "</div>"
         if url:
             open_tag = (
-                f'<a class="sponsor-tile sponsor-link glass-card stagger-item" href="{url}" '
+                f'<a class="sponsor-tile sponsor-link glass-card" href="{url}" '
                 'target="_blank" rel="noopener noreferrer">'
             )
             close_tag = "</a>"
@@ -2897,7 +2917,23 @@ def render_sponsors(sponsors: list[dict]) -> str:
                 ]
             )
         )
-    return "\n".join(cards)
+    if not cards:
+        return ""
+    cards_html = "\n".join(cards)
+    return "\n".join(
+        [
+            '<div class="sponsor-marquee stagger-item" aria-label="Patrocinadores colaboradores">',
+            '  <div class="sponsor-track">',
+            '    <div class="sponsor-loop">',
+            cards_html,
+            "    </div>",
+            '    <div class="sponsor-loop" aria-hidden="true">',
+            cards_html,
+            "    </div>",
+            "  </div>",
+            "</div>",
+        ]
+    )
 
 
 def render_index(query: dict[str, list[str]], cookie_header: str | None) -> str:
@@ -3394,23 +3430,40 @@ def render_content_form(content: dict) -> str:
 
 
 def render_admin_page(query: dict[str, list[str]]) -> str:
-    events = load_json(EVENTS_PATH, [])
-    videos = load_json(VIDEOS_PATH, [])
-    applications = load_applications()
-    content = load_content()
-    storage_status = get_storage_status()
+    section = resolve_admin_section(query)
     selected_user = (query.get("plan_user") or [""])[0]
     status = (query.get("status") or [""])[0]
-    plan_expanded = bool(selected_user or status == "plan_saved")
     replacements = {
         "ADMIN_MESSAGE": build_admin_alert(query),
-        "COACH_DASHBOARD": render_coach_dashboard(applications, storage_status),
-        "PLAN_EDITOR": render_plan_editor(applications, selected_user, expanded=plan_expanded),
-        "CONTENT_FORM": render_content_form(content),
-        "EVENT_LIST": render_event_list(events),
-        "VIDEO_LIST": render_video_list(videos),
-        "APPLICATION_LIST": render_application_list(applications),
+        "COACH_DASHBOARD": "",
+        "PLAN_EDITOR": "",
+        "CONTENT_FORM": "",
+        "EVENT_LIST": "",
+        "VIDEO_LIST": "",
+        "APPLICATION_LIST": "",
     }
+    if section == "inicio":
+        events = load_json(EVENTS_PATH, [])
+        videos = load_json(VIDEOS_PATH, [])
+        content = load_content()
+        replacements.update(
+            {
+                "CONTENT_FORM": render_content_form(content),
+                "EVENT_LIST": render_event_list(events),
+                "VIDEO_LIST": render_video_list(videos),
+            }
+        )
+    else:
+        applications = load_applications()
+        storage_status = get_storage_status()
+        plan_expanded = bool(selected_user or status == "plan_saved")
+        replacements.update(
+            {
+                "COACH_DASHBOARD": render_coach_dashboard(applications, storage_status),
+                "PLAN_EDITOR": render_plan_editor(applications, selected_user, expanded=plan_expanded),
+                "APPLICATION_LIST": render_application_list(applications),
+            }
+        )
     return render_template(ADMIN_TEMPLATE, replacements)
 
 
@@ -3429,7 +3482,7 @@ def render_login_page(error: str | None = None) -> str:
             "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">",
             "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>",
             "    <link href=\"https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">",
-            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260219-4\">",
+            "    <link rel=\"stylesheet\" href=\"/styles.css?v=20260225-8\">",
             "  </head>",
             "  <body class=\"admin-body\">",
             "    <div class=\"noise\" aria-hidden=\"true\"></div>",
@@ -3464,6 +3517,7 @@ def render_login_page(error: str | None = None) -> str:
             "        </form>",
             "      </div>",
             "    </main>",
+            "    <script src=\"/script.js?v=20260225-2\"></script>",
             "  </body>",
             "</html>",
         ]
@@ -4158,7 +4212,17 @@ class AuraHandler(SimpleHTTPRequestHandler):
     def admin_redirect(self, status: str) -> None:
         referer = self.headers.get("Referer", "")
         if "/admin" in referer:
-            self.redirect(f"/admin?status={status}")
+            try:
+                parsed = urllib.parse.urlparse(referer)
+                ref_query = urllib.parse.parse_qs(parsed.query)
+            except Exception:
+                ref_query = {}
+            target_query = {"status": status}
+            for key in ("admin_section", "plan_user"):
+                value = str((ref_query.get(key) or [""])[0]).strip()
+                if value:
+                    target_query[key] = value
+            self.redirect(f"/admin?{urllib.parse.urlencode(target_query)}")
         else:
             self.redirect(f"/?admin_status={status}#acceso")
 
@@ -4185,6 +4249,26 @@ class AuraHandler(SimpleHTTPRequestHandler):
             else:
                 proto = "https"
         return f"{proto}://{host}"
+
+    def apply_user_home_grace_ttl(self, cookie_header: str | None, query: dict[str, list[str]]) -> None:
+        from_portal = str((query.get("from") or [""])[0]).strip().lower() == "portal"
+        referer = self.headers.get("Referer", "")
+        if not from_portal and "/portal" not in referer:
+            return
+        token = get_cookie_token(cookie_header, USER_SESSION_COOKIE)
+        if not token:
+            return
+        sessions = load_json(SESSIONS_PATH, {})
+        if not isinstance(sessions, dict):
+            return
+        session_data = sessions.get(token)
+        if not isinstance(session_data, dict):
+            return
+        if session_data.get("role") != "user":
+            return
+        session_data["expires"] = time.time() + USER_HOME_GRACE_TTL
+        sessions[token] = session_data
+        save_json(SESSIONS_PATH, sessions)
 
     def handle_application_review(self, query: dict[str, list[str]]) -> None:
         token = (query.get("token") or [""])[0].strip()
@@ -4427,9 +4511,11 @@ class AuraHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
+        cookie_header = self.headers.get("Cookie")
 
         if path in {"/", "/index.html"}:
-            self.send_html(render_index(query, self.headers.get("Cookie")))
+            self.apply_user_home_grace_ttl(cookie_header, query)
+            self.send_html(render_index(query, cookie_header))
             return
 
         if path == "/admin/applications/review":
@@ -4437,7 +4523,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/admin" or path == "/admin/":
-            user = get_session_user(self.headers.get("Cookie"), ADMIN_SESSION_COOKIE, "admin")
+            user = get_session_user(cookie_header, ADMIN_SESSION_COOKIE, "admin")
             if user:
                 self.send_html(render_admin_page(query))
             else:
@@ -4459,7 +4545,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/portal" or path == "/portal/":
-            self.send_html(render_portal_page(query, self.headers.get("Cookie")))
+            self.send_html(render_portal_page(query, cookie_header))
             return
 
         if path == "/password/reset":
@@ -4467,7 +4553,7 @@ class AuraHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/admin/export/json":
-            user = get_session_user(self.headers.get("Cookie"), ADMIN_SESSION_COOKIE, "admin")
+            user = get_session_user(cookie_header, ADMIN_SESSION_COOKIE, "admin")
             if not user:
                 self.send_error(HTTPStatus.FORBIDDEN)
                 return
@@ -5169,7 +5255,17 @@ class AuraHandler(SimpleHTTPRequestHandler):
         }
         applications.append(application)
         save_json(APPLICATIONS_PATH, applications)
-        self.admin_redirect("client_added")
+        status = "client_added"
+        if approved:
+            smtp_settings = load_smtp_settings()
+            queued = notify_application_decision_async(
+                application,
+                "approved",
+                smtp_settings,
+                public_base_url=self.get_public_base_url(),
+            )
+            status = "client_added_active_mail_queued" if queued else "client_added_active_mail_fail"
+        self.admin_redirect(status)
 
     def handle_client_duplicate(self) -> None:
         data, _ = parse_post_data(self)

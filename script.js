@@ -127,6 +127,51 @@ document.addEventListener("DOMContentLoaded", () => {
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  const initScrollDownCue = () => {
+    if (!document.body || document.querySelector(".scroll-down-cue")) {
+      return;
+    }
+    const cue = document.createElement("button");
+    cue.type = "button";
+    cue.className = "scroll-down-cue";
+    cue.setAttribute("aria-label", "Desplazar hacia abajo");
+    cue.innerHTML = '<span aria-hidden="true">⌄</span>';
+    document.body.appendChild(cue);
+
+    let dismissed = false;
+    const updateCue = () => {
+      const doc = document.documentElement;
+      const canScroll = doc.scrollHeight - window.innerHeight > 90;
+      const scrolled = window.scrollY > 64;
+      cue.classList.toggle("is-hidden", !canScroll || scrolled || dismissed);
+    };
+
+    cue.addEventListener("click", () => {
+      dismissed = true;
+      updateCue();
+      window.scrollBy({
+        top: Math.max(window.innerHeight * 0.72, 280),
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+      });
+    });
+
+    window.addEventListener("scroll", updateCue, { passive: true });
+    window.addEventListener("resize", updateCue);
+    window.setTimeout(updateCue, 120);
+    updateCue();
+  };
+
+  const syncHorizontalDragHints = () => {
+    document.querySelectorAll(".day-grid, .portal-items-row").forEach((track) => {
+      const isScrollable = track.scrollWidth - track.clientWidth > 2;
+      track.classList.toggle("is-scrollable-track", isScrollable);
+      const hint = track.previousElementSibling;
+      if (hint && hint.hasAttribute("data-drag-hint")) {
+        hint.hidden = !isScrollable;
+      }
+    });
+  };
+
   const ensureVideoSource = (video) => {
     const src = video.getAttribute("src");
     if (src && src.trim()) {
@@ -227,6 +272,10 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     allVideos.forEach((video) => videoObserver.observe(video));
   }
+
+  initScrollDownCue();
+  syncHorizontalDragHints();
+  window.addEventListener("resize", syncHorizontalDragHints);
 
   const horizontalTracks = Array.from(
     document.querySelectorAll(".video-arena, .progression-grid, .day-grid, .portal-items-row")
@@ -980,6 +1029,26 @@ document.addEventListener("DOMContentLoaded", () => {
     filterMedia();
   }
 
+  const adminContentForm = document.querySelector('form[action="/admin/content"]');
+  if (adminContentForm) {
+    const contentFileInputs = Array.from(
+      adminContentForm.querySelectorAll('input[type="file"]')
+    );
+    const syncAdminContentEncoding = () => {
+      const hasFile = contentFileInputs.some(
+        (input) => input.files && input.files.length > 0
+      );
+      adminContentForm.enctype = hasFile
+        ? "multipart/form-data"
+        : "application/x-www-form-urlencoded";
+    };
+    contentFileInputs.forEach((input) => {
+      input.addEventListener("change", syncAdminContentEncoding);
+    });
+    adminContentForm.addEventListener("submit", syncAdminContentEncoding);
+    syncAdminContentEncoding();
+  }
+
   const adminTabs = document.getElementById("admin_section_tabs");
   if (adminTabs) {
     const tabButtons = Array.from(
@@ -1004,6 +1073,17 @@ document.addEventListener("DOMContentLoaded", () => {
     ) {
       initialSection = "portal";
     }
+    const goToSection = (section) => {
+      if (!hasSection(section)) {
+        return;
+      }
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("admin_section", section);
+      if (section !== "portal") {
+        nextUrl.searchParams.delete("plan_user");
+      }
+      window.location.assign(nextUrl.toString());
+    };
     const activateSection = (section, syncUrl = true) => {
       if (!hasSection(section)) {
         return;
@@ -1027,7 +1107,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     tabButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        activateSection(button.dataset.adminSection || "inicio");
+        goToSection(button.dataset.adminSection || "inicio");
       });
     });
     navSectionLinks.forEach((link) => {
@@ -1037,7 +1117,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         event.preventDefault();
-        activateSection(section);
+        goToSection(section);
       });
     });
     activateSection(initialSection, false);
