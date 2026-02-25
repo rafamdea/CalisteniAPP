@@ -2362,7 +2362,7 @@ def render_forgot_password_block(prefix: str) -> str:
             f'        <input id="{email_id}" name="email" type="email" required>',
             "      </div>",
             "    </div>",
-            '    <button class="btn glass ghost small" type="submit">Enviar enlace</button>',
+            '    <button class="btn glass primary small" type="submit">Enviar enlace</button>',
             '    <p class="form-note">Usa el mismo usuario y correo con el que te registraste.</p>',
             "  </form>",
             "</details>",
