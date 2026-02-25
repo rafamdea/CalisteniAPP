@@ -392,6 +392,55 @@ h3 {
   justify-items: center;
 }
 
+.hero-copy h1 {
+  position: relative;
+  margin-bottom: 14px;
+  font-size: clamp(3.4rem, 8.2vw, 7.8rem);
+  letter-spacing: 0.16em;
+  line-height: 0.92;
+  color: #f7ffd8;
+  text-shadow:
+    0 0 14px rgba(255, 230, 144, 0.62),
+    0 0 34px rgba(106, 255, 198, 0.36),
+    0 14px 40px rgba(0, 0, 0, 0.58);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .hero-copy h1 {
+    background: linear-gradient(
+      118deg,
+      rgba(255, 248, 196, 1) 0%,
+      rgba(255, 232, 150, 1) 24%,
+      rgba(187, 255, 223, 1) 58%,
+      rgba(255, 245, 186, 1) 100%
+    );
+    background-size: 180% 180%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: hero-radiance 7s ease-in-out infinite;
+  }
+}
+
+.hero-copy h1::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  width: min(72%, 420px);
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 235, 155, 0),
+    rgba(255, 235, 155, 0.96),
+    rgba(128, 255, 205, 0.88),
+    rgba(255, 235, 155, 0)
+  );
+  box-shadow: 0 0 20px rgba(255, 229, 140, 0.55);
+}
+
 .hero-copy .lead {
   margin-inline: auto;
   max-width: 60ch;
@@ -2714,6 +2763,10 @@ h3 {
   -webkit-backdrop-filter: none;
 }
 
+.perf-lite .hero-copy h1 {
+  animation: none;
+}
+
 @keyframes float {
   0% {
     transform: translateY(0);
@@ -2774,6 +2827,30 @@ h3 {
   100% {
     opacity: 0.1;
     transform: translateY(0);
+  }
+}
+
+@keyframes hero-radiance {
+  0% {
+    background-position: 0% 50%;
+    text-shadow:
+      0 0 12px rgba(255, 229, 139, 0.58),
+      0 0 26px rgba(116, 255, 202, 0.3),
+      0 12px 36px rgba(0, 0, 0, 0.52);
+  }
+  50% {
+    background-position: 100% 50%;
+    text-shadow:
+      0 0 18px rgba(255, 239, 173, 0.82),
+      0 0 40px rgba(124, 255, 211, 0.5),
+      0 16px 42px rgba(0, 0, 0, 0.62);
+  }
+  100% {
+    background-position: 0% 50%;
+    text-shadow:
+      0 0 12px rgba(255, 229, 139, 0.58),
+      0 0 26px rgba(116, 255, 202, 0.3),
+      0 12px 36px rgba(0, 0, 0, 0.52);
   }
 }
 
@@ -2966,6 +3043,12 @@ h3 {
 
   h1 {
     font-size: clamp(2.4rem, 10vw, 3.4rem);
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2.8rem, 13vw, 4.6rem);
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
   }
 
   .lead {

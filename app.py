@@ -290,7 +290,7 @@ SPONSOR_ZUMUB_URL = "https://www.zumub.com/ES/"
 DEFAULT_CONTENT = {
     "hero": {
         "eyebrow": "Entrenamiento gratuito · 4 semanas",
-        "title": "Calistenia con aura épica",
+        "title": "AURA CALISTENIA",
         "subtitle": (
             "Plan gratuito de 4 semanas para dominar dominadas, muscle up y pino con disciplina real."
         ),
