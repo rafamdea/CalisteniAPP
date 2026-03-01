@@ -374,10 +374,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  if (!prefersReducedMotion && allVideos.length) {
+  const primeFeaturedVideos = () => {
     featuredVideos.forEach((video) => {
       ensureVideoSource(video);
     });
+  };
+
+  if (!prefersReducedMotion && allVideos.length) {
+    const scheduleFeaturedVideos = () => {
+      if (!featuredVideos.length) {
+        return;
+      }
+      if (!lowPerfDevice && window.innerWidth >= 1024 && "requestIdleCallback" in window) {
+        window.requestIdleCallback(primeFeaturedVideos, { timeout: 1400 });
+        return;
+      }
+      window.setTimeout(primeFeaturedVideos, 220);
+    };
+
+    if (document.readyState === "complete") {
+      scheduleFeaturedVideos();
+    } else {
+      window.addEventListener("load", scheduleFeaturedVideos, { once: true });
+    }
+
     const videoObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -414,7 +434,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const horizontalTrackSelector =
     ".video-arena, .progression-grid, .day-grid, .portal-items-row";
-  const horizontalTracks = Array.from(document.querySelectorAll(horizontalTrackSelector));
   const resolveHorizontalTrack = (target) => {
     if (!(target instanceof Element)) {
       return null;
@@ -435,10 +454,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const horizontalDelta = Math.abs(event.deltaX);
       const verticalDelta = Math.abs(event.deltaY);
-      if (!event.shiftKey && horizontalDelta <= verticalDelta) {
-        return;
-      }
-      const delta = event.deltaX || event.deltaY;
+      const delta =
+        event.shiftKey || horizontalDelta > verticalDelta
+          ? event.deltaX || event.deltaY
+          : event.deltaY;
       if (Math.abs(delta) < 1) {
         return;
       }
@@ -447,10 +466,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (Math.abs(clamped - track.scrollLeft) < 0.5) {
         return;
       }
-      event.preventDefault();
       track.scrollLeft = clamped;
     },
-    { passive: false }
+    { passive: true }
   );
 
   const dragTracks = Array.from(document.querySelectorAll(".video-arena, .progression-grid"));
