@@ -680,7 +680,7 @@ h3 {
   margin-bottom: 36px;
   overflow-x: auto;
   padding: 8px 18vw 22px 4px;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scroll-padding-left: 2px;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
@@ -693,6 +693,7 @@ h3 {
   gap: 14px;
   border: 1px solid rgba(74, 241, 173, 0.2);
   scroll-snap-align: start;
+  contain: layout paint;
 }
 
 .progression-media video {
@@ -706,6 +707,7 @@ h3 {
 
 .progression-media {
   position: relative;
+  contain: paint;
 }
 
 .progression-step {
@@ -861,7 +863,7 @@ h3 {
   position: relative;
   overflow-x: auto;
   padding: 8px 16vw 32px 4px;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scroll-padding-left: 4px;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
@@ -932,6 +934,7 @@ h3 {
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
   transition: transform 0.6s ease, box-shadow 0.6s ease;
   scroll-snap-align: start;
+  contain: layout paint;
 }
 
 .video-card:hover {
@@ -954,6 +957,7 @@ h3 {
   position: relative;
   background: rgba(6, 15, 11, 0.75);
   min-height: 220px;
+  contain: paint;
 }
 
 .video-loop-indicator {
@@ -1648,6 +1652,7 @@ h3 {
   box-shadow: inset 0 0 0 1px rgba(74, 241, 173, 0.08), 0 18px 40px rgba(0, 0, 0, 0.35);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  contain: layout paint;
 }
 
 .news-card::before {
@@ -1755,6 +1760,7 @@ h3 {
   padding: 26px 18px;
   border: 1px solid rgba(74, 241, 173, 0.2);
   transition: transform 0.4s ease, border 0.4s ease;
+  contain: layout paint;
 }
 
 .sponsor-link {

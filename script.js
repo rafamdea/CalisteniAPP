@@ -360,12 +360,37 @@ document.addEventListener("DOMContentLoaded", () => {
     if (prefersReducedMotion || !allVideos.length) {
       return;
     }
-    const visibleVideos = new Set(
-      allVideos.filter((video) => video.dataset.isVisible === "true")
-    );
+    const visibleVideos = allVideos.filter((video) => video.dataset.isVisible === "true");
+    const allowedVideos = new Set();
+    const groupedVideos = new Map();
+
+    visibleVideos.forEach((video) => {
+      const track =
+        video.closest(".video-arena, .progression-grid, .day-grid, .portal-items-row") ||
+        video.parentElement ||
+        document.body;
+      const key = track;
+      const current = groupedVideos.get(key) || [];
+      current.push(video);
+      groupedVideos.set(key, current);
+    });
+
+    groupedVideos.forEach((videos, track) => {
+      const limit =
+        track instanceof Element && track.matches(".video-arena, .progression-grid")
+          ? (lowPerfDevice || window.innerWidth < 1024 ? 1 : 2)
+          : videos.length;
+      videos
+        .sort(
+          (left, right) =>
+            Number(right.dataset.visibilityRatio || 0) - Number(left.dataset.visibilityRatio || 0)
+        )
+        .slice(0, limit)
+        .forEach((video) => allowedVideos.add(video));
+    });
 
     allVideos.forEach((video) => {
-      if (visibleVideos.has(video)) {
+      if (allowedVideos.has(video)) {
         video.dataset.inViewport = "true";
         safePlayVideo(video);
         return;
@@ -454,10 +479,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const horizontalDelta = Math.abs(event.deltaX);
       const verticalDelta = Math.abs(event.deltaY);
-      const delta =
-        event.shiftKey || horizontalDelta > verticalDelta
-          ? event.deltaX || event.deltaY
-          : event.deltaY;
+      const isPublicMediaTrack = track.matches(".video-arena, .progression-grid");
+      if (!isPublicMediaTrack && !event.shiftKey && horizontalDelta <= verticalDelta) {
+        return;
+      }
+      const delta = isPublicMediaTrack ? event.deltaY || event.deltaX : event.deltaX || event.deltaY;
       if (Math.abs(delta) < 1) {
         return;
       }
@@ -466,9 +492,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (Math.abs(clamped - track.scrollLeft) < 0.5) {
         return;
       }
+      if (isPublicMediaTrack) {
+        event.preventDefault();
+      }
       track.scrollLeft = clamped;
     },
-    { passive: true }
+    { passive: false }
   );
 
   const dragTracks = Array.from(document.querySelectorAll(".video-arena, .progression-grid"));
