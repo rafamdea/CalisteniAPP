@@ -424,40 +424,46 @@ document.addEventListener("DOMContentLoaded", () => {
   syncHorizontalDragHints();
   window.addEventListener("resize", syncHorizontalDragHints);
 
-  const horizontalTracks = Array.from(
-    document.querySelectorAll(".video-arena, .progression-grid, .day-grid, .portal-items-row")
+  const horizontalTrackSelector =
+    ".video-arena, .progression-grid, .day-grid, .portal-items-row";
+  const horizontalTracks = Array.from(document.querySelectorAll(horizontalTrackSelector));
+  const resolveHorizontalTrack = (target) => {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+    return target.closest(horizontalTrackSelector);
+  };
+
+  document.addEventListener(
+    "wheel",
+    (event) => {
+      const track = resolveHorizontalTrack(event.target);
+      if (!track || event.ctrlKey) {
+        return;
+      }
+      const max = track.scrollWidth - track.clientWidth;
+      if (max <= 2) {
+        return;
+      }
+      const horizontalDelta = Math.abs(event.deltaX);
+      const verticalDelta = Math.abs(event.deltaY);
+      const delta =
+        event.shiftKey || horizontalDelta > verticalDelta
+          ? event.deltaX || event.deltaY
+          : event.deltaY;
+      if (Math.abs(delta) < 1) {
+        return;
+      }
+      const next = track.scrollLeft + delta;
+      const clamped = Math.max(0, Math.min(max, next));
+      if (Math.abs(clamped - track.scrollLeft) < 0.5) {
+        return;
+      }
+      event.preventDefault();
+      track.scrollLeft = clamped;
+    },
+    { passive: false }
   );
-  horizontalTracks.forEach((track) => {
-    track.addEventListener(
-      "wheel",
-      (event) => {
-        if (event.ctrlKey) {
-          return;
-        }
-        if (track.scrollWidth <= track.clientWidth + 2) {
-          return;
-        }
-        const horizontalDelta = Math.abs(event.deltaX);
-        const verticalDelta = Math.abs(event.deltaY);
-        const delta =
-          event.shiftKey || horizontalDelta > verticalDelta
-            ? event.deltaX || event.deltaY
-            : event.deltaY;
-        if (Math.abs(delta) < 1) {
-          return;
-        }
-        const next = track.scrollLeft + delta;
-        const max = track.scrollWidth - track.clientWidth;
-        const clamped = Math.max(0, Math.min(max, next));
-        if (Math.abs(clamped - track.scrollLeft) < 0.5) {
-          return;
-        }
-        event.preventDefault();
-        track.scrollLeft = clamped;
-      },
-      { passive: false }
-    );
-  });
 
   const dragTracks = Array.from(document.querySelectorAll(".video-arena, .progression-grid"));
   dragTracks.forEach((track) => {

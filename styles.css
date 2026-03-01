@@ -685,6 +685,8 @@ h3 {
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  position: relative;
+  touch-action: pan-x;
 }
 
 .progression-card {
@@ -864,10 +866,7 @@ h3 {
   scroll-padding-left: 4px;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-}
-
-.video-arena::before {
-  content: none;
+  touch-action: pan-x;
 }
 
 .video-arena.is-scrollable-track,
@@ -875,6 +874,45 @@ h3 {
   background-repeat: no-repeat;
   background-position: right center;
   background-size: 46px 100%;
+}
+
+.video-arena::before,
+.video-arena::after,
+.progression-grid::before,
+.progression-grid::after {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 241, 173, 0.28);
+  background: rgba(6, 16, 11, 0.72);
+  color: rgba(233, 248, 239, 0.96);
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  line-height: 1;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.video-arena.can-scroll-left::before,
+.progression-grid.can-scroll-left::before {
+  content: "‹";
+  left: 10px;
+  opacity: 0.68;
+}
+
+.video-arena.can-scroll-right::after,
+.progression-grid.can-scroll-right::after {
+  content: "›";
+  right: 10px;
+  opacity: 0.96;
+  animation: drag-right-cue 1.1s ease-in-out infinite;
 }
 
 .video-arena.is-scrollable-track.can-scroll-right,
@@ -1393,11 +1431,6 @@ h3 {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(233, 248, 239, 0.84);
-}
-
-.public-scroll-hint {
-  display: inline-flex;
-  margin: 0 0 12px;
 }
 
 .horizontal-drag-hint::before {
