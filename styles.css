@@ -686,7 +686,6 @@ h3 {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   position: relative;
-  touch-action: pan-x;
 }
 
 .progression-card {
@@ -866,7 +865,6 @@ h3 {
   scroll-padding-left: 4px;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
 }
 
 .video-arena.is-scrollable-track,

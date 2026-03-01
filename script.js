@@ -343,6 +343,9 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const allVideos = Array.from(document.querySelectorAll("video"));
+  const featuredVideos = allVideos.filter(
+    (video) => video.closest(".progression-grid") || video.closest(".video-arena")
+  );
   allVideos.forEach((video) => {
     video.preload = "none";
     lockMute(video);
@@ -353,34 +356,16 @@ document.addEventListener("DOMContentLoaded", () => {
     pauseVideo(video);
   });
 
-  const getVideoConcurrencyLimit = () => {
-    if (lowPerfDevice || window.innerWidth < 768) {
-      return 1;
-    }
-    return 2;
-  };
-
-  const getVideoPriority = (video) => {
-    const rect = video.getBoundingClientRect();
-    const viewportCenter = window.innerHeight / 2;
-    const videoCenter = rect.top + rect.height / 2;
-    const distancePenalty = Math.abs(videoCenter - viewportCenter);
-    const visibilityBoost = Number(video.dataset.visibilityRatio || 0) * 10000;
-    return visibilityBoost - distancePenalty;
-  };
-
   const syncVideoPlayback = () => {
     if (prefersReducedMotion || !allVideos.length) {
       return;
     }
-    const limit = getVideoConcurrencyLimit();
-    const visibleVideos = allVideos
-      .filter((video) => video.dataset.isVisible === "true")
-      .sort((left, right) => getVideoPriority(right) - getVideoPriority(left));
-    const allowedVideos = new Set(visibleVideos.slice(0, limit));
+    const visibleVideos = new Set(
+      allVideos.filter((video) => video.dataset.isVisible === "true")
+    );
 
     allVideos.forEach((video) => {
-      if (allowedVideos.has(video)) {
+      if (visibleVideos.has(video)) {
         video.dataset.inViewport = "true";
         safePlayVideo(video);
         return;
@@ -390,6 +375,9 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   if (!prefersReducedMotion && allVideos.length) {
+    featuredVideos.forEach((video) => {
+      ensureVideoSource(video);
+    });
     const videoObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -405,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       {
         threshold: [0, 0.25, 0.5, 0.75],
-        rootMargin: "80px 0px 80px 0px",
+        rootMargin: "220px 0px 220px 0px",
       }
     );
     allVideos.forEach((video) => videoObserver.observe(video));
@@ -447,10 +435,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const horizontalDelta = Math.abs(event.deltaX);
       const verticalDelta = Math.abs(event.deltaY);
-      const delta =
-        event.shiftKey || horizontalDelta > verticalDelta
-          ? event.deltaX || event.deltaY
-          : event.deltaY;
+      if (!event.shiftKey && horizontalDelta <= verticalDelta) {
+        return;
+      }
+      const delta = event.deltaX || event.deltaY;
       if (Math.abs(delta) < 1) {
         return;
       }
