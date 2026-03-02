@@ -18,17 +18,15 @@
           <span class="brand-mark" aria-hidden="true"></span>
         </a>
         <nav class="nav-group nav-right">
-          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
           <a href="/">Página principal</a>
-          <a href="/admin?admin_section=portal" data-admin-section-link="portal">Portal del alumno</a>
+          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
           <form class="nav-logout-form" action="/admin/logout" method="post">
             <button class="btn nav-logout-btn" type="submit">Cerrar sesión</button>
           </form>
         </nav>
         <nav class="nav-group nav-compact" aria-label="Navegación">
-          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
           <a href="/">Página principal</a>
-          <a href="/admin?admin_section=portal" data-admin-section-link="portal">Portal del alumno</a>
+          <a href="/admin?admin_section=inicio" data-admin-section-link="inicio">Inicio</a>
           <form class="nav-logout-form" action="/admin/logout" method="post">
             <button class="btn nav-logout-btn" type="submit">Cerrar sesión</button>
           </form>
@@ -49,6 +47,7 @@
       </div>
 
       <div class="container admin-stack admin-section-panel" data-admin-section-panel="inicio">
+        {{VISIT_METRICS}}
         {{CONTENT_FORM}}
 
         <div class="admin-grid">

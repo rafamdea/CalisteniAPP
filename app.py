@@ -14,7 +14,7 @@ import threading
 import time
 import urllib.parse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.policy import default
@@ -51,14 +51,19 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 CONTENT_PATH = DATA_DIR / "content.json"
 PASSWORD_RESETS_PATH = DATA_DIR / "password_resets.json"
 APPLICATION_REVIEW_TOKENS_PATH = DATA_DIR / "application_review_tokens.json"
+VISITS_PATH = DATA_DIR / "visits.json"
 
 DATA_LOCK = threading.Lock()
+VISIT_STATS_LOCK = threading.Lock()
 ADMIN_SESSION_COOKIE = "aura_admin_session"
 USER_SESSION_COOKIE = "aura_user_session"
+VISIT_COOKIE = "aura_visit_id"
 SESSION_TTL = 12 * 60 * 60
 USER_HOME_GRACE_TTL = 5 * 60
 RESET_TOKEN_TTL = 60 * 60
 APPLICATION_REVIEW_TOKEN_TTL = 7 * 24 * 60 * 60
+VISIT_COOKIE_TTL = 365 * 24 * 60 * 60
+VISIT_HISTORY_DAYS = 180
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov"}
@@ -362,6 +367,13 @@ DEFAULT_CONTENT = {
             "url": SPONSOR_ZUMUB_URL,
         },
     ],
+}
+
+DEFAULT_VISIT_STATS = {
+    "total_views": 0,
+    "unique_visitors": 0,
+    "last_visit_at": 0,
+    "daily_views": {},
 }
 
 
@@ -919,6 +931,7 @@ def ensure_data_files() -> None:
     seed_json_key(CONTENT_PATH, DEFAULT_CONTENT)
     seed_json_key(PASSWORD_RESETS_PATH, {})
     seed_json_key(APPLICATION_REVIEW_TOKENS_PATH, {})
+    seed_json_key(VISITS_PATH, DEFAULT_VISIT_STATS)
 
 
 def enforce_admin_credentials() -> dict:
@@ -955,6 +968,10 @@ def copy_default_plan() -> dict:
 
 def copy_default_content() -> dict:
     return json.loads(json.dumps(DEFAULT_CONTENT))
+
+
+def copy_default_visit_stats() -> dict:
+    return json.loads(json.dumps(DEFAULT_VISIT_STATS))
 
 
 def normalize_content(content: dict | None) -> dict:
@@ -1048,6 +1065,92 @@ def normalize_content(content: dict | None) -> dict:
 
 def load_content() -> dict:
     return normalize_content(load_json(CONTENT_PATH, DEFAULT_CONTENT))
+
+
+def normalize_visit_stats(stats: dict | None) -> dict:
+    default = copy_default_visit_stats()
+    if not isinstance(stats, dict):
+        return default
+
+    total_views_raw = stats.get("total_views", stats.get("total", 0))
+    unique_visitors_raw = stats.get("unique_visitors", stats.get("unique", 0))
+    last_visit_at_raw = stats.get("last_visit_at", 0)
+
+    try:
+        default["total_views"] = max(int(total_views_raw), 0)
+    except (TypeError, ValueError):
+        default["total_views"] = 0
+    try:
+        default["unique_visitors"] = max(int(unique_visitors_raw), 0)
+    except (TypeError, ValueError):
+        default["unique_visitors"] = 0
+    try:
+        default["last_visit_at"] = max(int(last_visit_at_raw), 0)
+    except (TypeError, ValueError):
+        default["last_visit_at"] = 0
+
+    daily_source = stats.get("daily_views")
+    if not isinstance(daily_source, dict):
+        daily_source = stats.get("by_day", {})
+    if isinstance(daily_source, dict):
+        cleaned_daily: dict[str, int] = {}
+        for day_key, count in daily_source.items():
+            day_text = str(day_key).strip()
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day_text):
+                continue
+            try:
+                count_value = int(count)
+            except (TypeError, ValueError):
+                continue
+            if count_value > 0:
+                cleaned_daily[day_text] = count_value
+        ordered_keys = sorted(cleaned_daily)[-VISIT_HISTORY_DAYS:]
+        default["daily_views"] = {key: cleaned_daily[key] for key in ordered_keys}
+
+    if default["unique_visitors"] > default["total_views"]:
+        default["unique_visitors"] = default["total_views"]
+    return default
+
+
+def load_visit_stats() -> dict:
+    return normalize_visit_stats(load_json(VISITS_PATH, DEFAULT_VISIT_STATS))
+
+
+def increment_visit_stats(unique_visit: bool) -> dict:
+    with VISIT_STATS_LOCK:
+        stats = load_visit_stats()
+        now_ts = int(time.time())
+        today_key = datetime.now().strftime("%Y-%m-%d")
+        daily_views = dict(stats.get("daily_views", {}))
+        daily_views[today_key] = int(daily_views.get(today_key, 0)) + 1
+        ordered_keys = sorted(daily_views)[-VISIT_HISTORY_DAYS:]
+        stats["daily_views"] = {key: daily_views[key] for key in ordered_keys}
+        stats["total_views"] = int(stats.get("total_views", 0)) + 1
+        if unique_visit:
+            stats["unique_visitors"] = int(stats.get("unique_visitors", 0)) + 1
+        stats["last_visit_at"] = now_ts
+        save_json(VISITS_PATH, normalize_visit_stats(stats))
+        return stats
+
+
+def format_admin_number(value: int) -> str:
+    try:
+        return f"{max(int(value), 0):,}".replace(",", ".")
+    except (TypeError, ValueError):
+        return "0"
+
+
+def format_visit_timestamp(timestamp) -> str:
+    try:
+        parsed = int(timestamp)
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed <= 0:
+        return "Sin visitas todavia"
+    try:
+        return datetime.fromtimestamp(parsed).strftime("%d/%m/%Y %H:%M")
+    except (OSError, OverflowError, ValueError):
+        return "Sin visitas todavia"
 
 
 def normalize_smtp_settings(settings: dict | None) -> dict:
@@ -2035,6 +2138,53 @@ def render_coach_dashboard(applications: list[dict], storage_status: dict) -> st
             '      <div class="form-field">',
             '        <label for="student_search">Buscar alumno (usuario, email o ID)</label>',
             '        <input id="student_search" type="text" placeholder="Escribe para filtrar...">',
+            "      </div>",
+            "    </div>",
+            "  </details>",
+            "</div>",
+        ]
+    )
+
+
+def render_visit_metrics() -> str:
+    stats = load_visit_stats()
+    daily_views = stats.get("daily_views", {})
+    now = datetime.now()
+    today_key = now.strftime("%Y-%m-%d")
+    recent_days = {(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(7)}
+    today_views = int(daily_views.get(today_key, 0))
+    recent_views = sum(int(daily_views.get(day_key, 0)) for day_key in recent_days)
+    total_views = int(stats.get("total_views", 0))
+    unique_visitors = int(stats.get("unique_visitors", 0))
+    has_visits = total_views > 0
+    status_class = "storage-ok" if has_visits else "storage-local"
+    status_title = "Contador activo" if has_visits else "Esperando primeras visitas"
+    last_visit_text = html.escape(format_visit_timestamp(stats.get("last_visit_at", 0)))
+
+    return "\n".join(
+        [
+            '<div class="admin-card glass-card admin-wide">',
+            '  <details class="admin-collapsible admin-main-collapsible" open>',
+            '    <summary class="admin-collapsible-summary admin-main-summary">',
+            '      <div class="admin-collapsible-main">',
+            "        <strong>Visitas a la web</strong>",
+            "        <span>Seguimiento automatico de la portada publica</span>",
+            "      </div>",
+            '      <span class="admin-collapsible-tag">Metricas</span>',
+            "    </summary>",
+            '    <div class="admin-collapsible-content coach-dashboard">',
+            '      <div class="coach-stats">',
+            f"        <span>Visitas totales: <strong>{format_admin_number(total_views)}</strong></span>",
+            f"        <span>Visitantes unicos: <strong>{format_admin_number(unique_visitors)}</strong></span>",
+            f"        <span>Hoy: <strong>{format_admin_number(today_views)}</strong></span>",
+            f"        <span>Ultimos 7 dias: <strong>{format_admin_number(recent_views)}</strong></span>",
+            "      </div>",
+            f'      <div class="storage-pill {status_class}">',
+            '        <span class="storage-pill-label">Seguimiento</span>',
+            f"        <strong>{html.escape(status_title)}</strong>",
+            "        <span>Cuenta cada carga de la pagina principal en <code>/</code>.</span>",
+            "        <span>Los visitantes unicos se estiman por navegador usando una cookie persistente.</span>",
+            f"        <span>Ultima visita detectada: {last_visit_text}</span>",
             "      </div>",
             "    </div>",
             "  </details>",
@@ -3448,6 +3598,7 @@ def render_admin_page(query: dict[str, list[str]]) -> str:
         "EVENT_LIST": "",
         "VIDEO_LIST": "",
         "APPLICATION_LIST": "",
+        "VISIT_METRICS": "",
     }
     if section == "inicio":
         events = load_json(EVENTS_PATH, [])
@@ -3455,6 +3606,7 @@ def render_admin_page(query: dict[str, list[str]]) -> str:
         content = load_content()
         replacements.update(
             {
+                "VISIT_METRICS": render_visit_metrics(),
                 "CONTENT_FORM": render_content_form(content),
                 "EVENT_LIST": render_event_list(events),
                 "VIDEO_LIST": render_video_list(videos),
@@ -4194,11 +4346,19 @@ class AuraHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
-    def send_html(self, content: str, status: int = HTTPStatus.OK) -> None:
+    def send_html(
+        self,
+        content: str,
+        status: int = HTTPStatus.OK,
+        extra_headers: list[tuple[str, str]] | None = None,
+    ) -> None:
         encoded = content.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
+        if extra_headers:
+            for header_name, header_value in extra_headers:
+                self.send_header(header_name, header_value)
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -4276,6 +4436,25 @@ class AuraHandler(SimpleHTTPRequestHandler):
         session_data["expires"] = time.time() + USER_HOME_GRACE_TTL
         sessions[token] = session_data
         save_json(SESSIONS_PATH, sessions)
+
+    def record_public_visit(self, cookie_header: str | None) -> list[tuple[str, str]]:
+        visit_token = str(get_cookie_token(cookie_header, VISIT_COOKIE) or "").strip()
+        unique_visit = not visit_token
+        if unique_visit:
+            visit_token = secrets.token_urlsafe(18)
+        try:
+            increment_visit_stats(unique_visit)
+        except Exception as exc:
+            print(f"Error registrando visita publica: {exc}")
+            return []
+        if not unique_visit:
+            return []
+        return [
+            (
+                "Set-Cookie",
+                f"{VISIT_COOKIE}={visit_token}; Path=/; Max-Age={VISIT_COOKIE_TTL}; HttpOnly; SameSite=Lax",
+            )
+        ]
 
     def handle_application_review(self, query: dict[str, list[str]]) -> None:
         token = (query.get("token") or [""])[0].strip()
@@ -4522,7 +4701,9 @@ class AuraHandler(SimpleHTTPRequestHandler):
 
         if path in {"/", "/index.html"}:
             self.apply_user_home_grace_ttl(cookie_header, query)
-            self.send_html(render_index(query, cookie_header))
+            page = render_index(query, cookie_header)
+            visit_headers = self.record_public_visit(cookie_header)
+            self.send_html(page, extra_headers=visit_headers)
             return
 
         if path == "/admin/applications/review":
