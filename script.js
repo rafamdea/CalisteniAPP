@@ -565,8 +565,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     return shell.querySelector(horizontalTrackSelector);
   };
-  const publicMediaTrackSelector = ".video-arena, .progression-grid";
-  const wheelAssistTrackSelector = ".video-arena, .progression-grid, .portal-items-row";
+  const publicMediaTrackSelector = ".video-arena, .progression-grid, .portal-items-row";
+  const wheelAssistTrackSelector = publicMediaTrackSelector;
   const pointerDragTrackSelector = ".video-arena, .progression-grid, .portal-items-row";
   const textEntryTrackTargetSelector = "input, textarea, select";
   const trackScrollState = new WeakMap();
@@ -624,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const horizontalDelta = Math.abs(event.deltaX);
       const verticalDelta = Math.abs(event.deltaY);
-      const isPublicMediaTrack = track.matches(".video-arena, .progression-grid");
+      const isPublicMediaTrack = track.matches(publicMediaTrackSelector);
       const isWheelAssistTrack = track.matches(wheelAssistTrackSelector);
       if (!isWheelAssistTrack && !event.shiftKey && horizontalDelta <= verticalDelta) {
         return;
